@@ -22,7 +22,7 @@ public class BasicTeleOp extends LinearOpMode {
     private static final double TICKS_PER_REV = 28;
 
     // TARGET RPM: Threshold for shooter to be considered at target/max speed
-    private static final double SHOOTER_TARGET_RPM = 300;
+//    private static final double SHOOTER_TARGET_RPM = 2300;
 
     // Time (seconds) the shooter must continuously maintain target RPM before auto-feeding
     private static final double SHOOTER_STABILIZE_TIME_SEC = 0.35;
@@ -40,13 +40,7 @@ public class BasicTeleOp extends LinearOpMode {
         DcMotorEx indexerMotor      = hardwareMap.get(DcMotorEx.class, "indexerMotor");
         DcMotorEx intakeMotor       = hardwareMap.get(DcMotorEx.class, "intakeMotor");
 
-        //PID values for Shooter
-        double P = 5;
-        double I = 0;
-        double D = 0;
-        double F = 0;
-
-        // 2. IMU Initialization for Field-Centric Drive
+        // IMU Initialization for Field-Centric Drive
         IMU imu = hardwareMap.get(IMU.class, "imu");
         IMU.Parameters parameters = new IMU.Parameters(new RevHubOrientationOnRobot(
                 RevHubOrientationOnRobot.LogoFacingDirection.UP,
@@ -60,28 +54,18 @@ public class BasicTeleOp extends LinearOpMode {
         // Reverse indexerMotor so the indexer wheel spins inwards/forwards
         indexerMotor.setDirection(DcMotorSimple.Direction.REVERSE);
 
-        // 4. Reset and set run mode for all 8 motors
-        DcMotorEx[] shooterMotors = {
-                rightShooterMotor, leftShooterMotor};
+        // Reset and set run mode for all 8 motors
+        DcMotorEx[] allMotors = {
+                rightShooterMotor, leftShooterMotor, frontLeftMotor, backLeftMotor, frontRightMotor, backRightMotor, indexerMotor, intakeMotor};
 
-        DcMotorEx[] nonShooterMotors = {
-                frontLeftMotor, backLeftMotor, frontRightMotor, backRightMotor, indexerMotor, intakeMotor
-                };
-
-        for (DcMotorEx motor : shooterMotors) {
-            PIDFCoefficients pidfGains = new PIDFCoefficients(P, I, D, F);
+        for (DcMotorEx motor : allMotors) {
             motor.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
-//            motor.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
-//           motor.setPIDFCoefficients(DcMotor.RunMode.RUN_USING_ENCODER, pidfGains);
+            motor.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
         }
 
         // Reverse left shooter so both shooter wheels spin inwards/forwards together
         leftShooterMotor.setDirection(DcMotorSimple.Direction.REVERSE);
 
-        for (DcMotorEx motor : nonShooterMotors) {
-            motor.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
-            motor.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
-        }
 
         telemetry.addData("Status", "All 8 Motors & IMU Initialized. Ready.");
         telemetry.update();
@@ -129,33 +113,20 @@ public class BasicTeleOp extends LinearOpMode {
             backRightMotor.setPower(backRightPower);
 
             // --- VELOCITY & RPM CALCULATIONS ---
-            double flRpm = (frontLeftMotor.getVelocity() / TICKS_PER_REV) * 60.0;
-            double blRpm = (backLeftMotor.getVelocity() / TICKS_PER_REV) * 60.0;
-            double frRpm = (frontRightMotor.getVelocity() / TICKS_PER_REV) * 60.0;
-            double brRpm = (backRightMotor.getVelocity() / TICKS_PER_REV) * 60.0;
-
-            double rShootRpm = (rightShooterMotor.getVelocity(AngleUnit.RADIANS) / (2 * Math.PI)) * 60.0;
-            double lShootRpm = (leftShooterMotor.getVelocity(AngleUnit.RADIANS) / (2 * Math.PI)) * 60.0;
+            double rShootRpm = (rightShooterMotor.getVelocity())/TICKS_PER_REV * 60;
+            double lShootRpm = (leftShooterMotor.getVelocity())/TICKS_PER_REV * 60;
             double avgShooterRpm = (Math.abs(rShootRpm) + Math.abs(lShootRpm)) / 2.0;
-
-            double indexRpm  = (indexerMotor.getVelocity() / TICKS_PER_REV) * 60.0;
-            double intakeRpm = (intakeMotor.getVelocity() / TICKS_PER_REV) * 60.0;
-
-            // --- SHOOTER CONTROL & AUTO-INDEX LOGIC ---
-            // Shooter: Right Trigger throttles forward (0.0 to 1.0), Left Trigger reverses (anti-jam)
-
 
             // Check if user is actively spinning up the shooter forward
             boolean isShootingRequested = gamepad1.right_trigger > 0.1;
             if (isShootingRequested) {
-//                rightShooterMotor.setVelocity(SHOOTER_TARGET_RPM * (2 * Math.PI) / 60,AngleUnit.RADIANS);
-//                leftShooterMotor.setVelocity(SHOOTER_TARGET_RPM * (2 * Math.PI) / 60,AngleUnit.RADIANS);
                 rightShooterMotor.setPower(0.48);
                 leftShooterMotor.setPower(0.48);
             } else {
-                rightShooterMotor.setVelocity(0);
-                leftShooterMotor.setVelocity(0);
+                rightShooterMotor.setPower(0);
+                leftShooterMotor.setPower(0);
             };
+
 //            boolean isCurrentlyAtSpeed = isShootingRequested && (avgShooterRpm >= SHOOTER_TARGET_RPM);
 //
 //            // Check if shooter has reached and stayed at speed
@@ -169,7 +140,7 @@ public class BasicTeleOp extends LinearOpMode {
 //            }
 
             // Auto-trigger condition: held at target speed for the stabilization duration
-            //boolean autoIndexActive = isCurrentlyAtSpeed && (shooterSpoolTimer.seconds() >= SHOOTER_STABILIZE_TIME_SEC);
+//            boolean autoIndexActive = isCurrentlyAtSpeed && (shooterSpoolTimer.seconds() >= SHOOTER_STABILIZE_TIME_SEC);
 
             // --- INTAKE & INDEXER CONTROLS ---
             // Intake: 'A' button forwards (+1.0), 'Y' button reverse (-1.0)
@@ -199,17 +170,11 @@ public class BasicTeleOp extends LinearOpMode {
             // --- TELEMETRY DASHBOARD ---
             telemetry.addLine("=== DRIVETRAIN (FIELD-CENTRIC) ===");
             telemetry.addData("Heading (deg)", "%.1f (Press Options/Start to reset)", Math.toDegrees(botHeading));
-            telemetry.addData("FL", "Pwr: %.2f | RPM: %.0f", frontLeftPower, flRpm);
-            telemetry.addData("FR", "Pwr: %.2f | RPM: %.0f", frontRightPower, frRpm);
-            telemetry.addData("BL", "Pwr: %.2f | RPM: %.0f", backLeftPower, blRpm);
-            telemetry.addData("BR", "Pwr: %.2f | RPM: %.0f", backRightPower, brRpm);
 
             telemetry.addLine("=== SHOOTER & INDEXER ===");
-            telemetry.addData("Shooter Target", "%.0f RPM (Target: %.0f)", avgShooterRpm, SHOOTER_TARGET_RPM);
+//            telemetry.addData("Shooter Target", "%.0f RPM (Target: %.0f)", avgShooterRpm, SHOOTER_TARGET_RPM);
             //telemetry.addData("Spun Up & Stable", autoIndexActive ? "READY TO FIRE (FEEDING)" : (isCurrentlyAtSpeed ? "STABILIZING..." : "SPOOLING/OFF"));
             telemetry.addData("Shooter Motors", "L: %.0f RPM | R: %.0f RPM", lShootRpm, rShootRpm);
-            telemetry.addData("Indexer (Auto/RB/LB)", "Pwr: %.2f | RPM: %.0f", indexerPower, indexRpm);
-            telemetry.addData("Intake (A/Y)", "Pwr: %.2f | RPM: %.0f", intakePower, intakeRpm);
 
             telemetry.update();
         }

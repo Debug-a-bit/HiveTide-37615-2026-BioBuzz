@@ -29,7 +29,7 @@ public class BasicTeleOp extends LinearOpMode {
 
     @Override
     public void runOpMode() {
-        // 1. Hardware Mapping using DcMotorEx for velocity/RPM reading
+        // Hardware Mapping using DcMotorEx for velocity/RPM reading
         DcMotorEx frontLeftMotor    = hardwareMap.get(DcMotorEx.class, "frontLeftMotor");
         DcMotorEx backLeftMotor     = hardwareMap.get(DcMotorEx.class, "backLeftMotor");
         DcMotorEx frontRightMotor   = hardwareMap.get(DcMotorEx.class, "frontRightMotor");
@@ -53,13 +53,10 @@ public class BasicTeleOp extends LinearOpMode {
                 RevHubOrientationOnRobot.UsbFacingDirection.FORWARD));
         imu.initialize(parameters);
 
-        // 3. Set Directions (right side reversed for standard drivetrain)
+        // Set Directions (right side reversed for standard drivetrain)
         frontRightMotor.setDirection(DcMotorSimple.Direction.REVERSE);
         backRightMotor.setDirection(DcMotorSimple.Direction.REVERSE);
 
-
-
-// 4. Set velocity in encoder ticks per second
         // Reverse indexerMotor so the indexer wheel spins inwards/forwards
         indexerMotor.setDirection(DcMotorSimple.Direction.REVERSE);
 
@@ -74,9 +71,8 @@ public class BasicTeleOp extends LinearOpMode {
         for (DcMotorEx motor : shooterMotors) {
             PIDFCoefficients pidfGains = new PIDFCoefficients(P, I, D, F);
             motor.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
-            motor.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
-           motor.setPIDFCoefficients(DcMotor.RunMode.RUN_USING_ENCODER, pidfGains);
-           motor.getMotorType().setTicksPerRev(TICKS_PER_REV);
+//            motor.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+//           motor.setPIDFCoefficients(DcMotor.RunMode.RUN_USING_ENCODER, pidfGains);
         }
 
         // Reverse left shooter so both shooter wheels spin inwards/forwards together
@@ -152,8 +148,10 @@ public class BasicTeleOp extends LinearOpMode {
             // Check if user is actively spinning up the shooter forward
             boolean isShootingRequested = gamepad1.right_trigger > 0.1;
             if (isShootingRequested) {
-                rightShooterMotor.setVelocity(SHOOTER_TARGET_RPM * (2 * Math.PI) / 60,AngleUnit.RADIANS);
-                leftShooterMotor.setVelocity(SHOOTER_TARGET_RPM * (2 * Math.PI) / 60,AngleUnit.RADIANS);
+//                rightShooterMotor.setVelocity(SHOOTER_TARGET_RPM * (2 * Math.PI) / 60,AngleUnit.RADIANS);
+//                leftShooterMotor.setVelocity(SHOOTER_TARGET_RPM * (2 * Math.PI) / 60,AngleUnit.RADIANS);
+                rightShooterMotor.setPower(0.48);
+                leftShooterMotor.setPower(0.48);
             } else {
                 rightShooterMotor.setVelocity(0);
                 leftShooterMotor.setVelocity(0);
@@ -194,7 +192,7 @@ public class BasicTeleOp extends LinearOpMode {
 //            } else if (autoIndexActive) {
 //                indexerPower = 1.0; // Auto-feed ball into shooter
             } else {
-                indexerPower = 0.0;
+                indexerPower = -1.0;
             }
             indexerMotor.setPower(indexerPower);
 

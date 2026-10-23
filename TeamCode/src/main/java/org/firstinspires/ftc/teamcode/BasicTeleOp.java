@@ -7,6 +7,7 @@ import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
+import com.qualcomm.robotcore.hardware.DigitalChannel;
 import com.qualcomm.robotcore.hardware.HardwareDevice;
 import com.qualcomm.robotcore.hardware.IMU;
 import com.qualcomm.robotcore.hardware.PIDFCoefficients;
@@ -35,6 +36,8 @@ public class BasicTeleOp extends LinearOpMode {
     public static double SHOOTER_D = 0.0;
     public static double SHOOTER_F = 32767.0 / MAX_TICKS_PER_S;
     public static double INDEXER_IDLE_POWER = -1.0;
+
+    public static double INTAKE_IDLE_POWER = 0;
     public static double SHOOTER_POWER = 0.8;
 
     // TARGET RPM: Threshold for shooter to be considered at target/max speed
@@ -57,6 +60,9 @@ public class BasicTeleOp extends LinearOpMode {
         DcMotorEx leftShooterMotor  = hardwareMap.get(DcMotorEx.class, "leftShooterMotor");
         DcMotorEx indexerMotor      = hardwareMap.get(DcMotorEx.class, "indexerMotor");
         DcMotorEx intakeMotor       = hardwareMap.get(DcMotorEx.class, "intakeMotor");
+
+        DigitalChannel beamBreak = hardwareMap.get(DigitalChannel.class, "beamBreak");
+        beamBreak.setMode(DigitalChannel.Mode.INPUT);
 
         // IMU Initialization for Field-Centric Drive
         IMU imu = hardwareMap.get(IMU.class, "imu");
@@ -117,9 +123,6 @@ public class BasicTeleOp extends LinearOpMode {
 
             motor.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
             motor.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
-
-            // PID Values for the shooter velocity.
-            motor.setVelocityPIDFCoefficients(SHOOTER_P, SHOOTER_I, SHOOTER_D, SHOOTER_F);
         }
 
         // Reverse left shooter so both shooter wheels spin inwards/forwards together
@@ -174,6 +177,9 @@ public class BasicTeleOp extends LinearOpMode {
             double lShootRpm = ticksPerSecToRPM(leftShooterMotor.getVelocity());
             double avgShooterRpm = (Math.abs(rShootRpm) + Math.abs(lShootRpm)) / 2.0;
 
+            // PID Values for the shooter velocity.
+            rightShooterMotor.setVelocityPIDFCoefficients(SHOOTER_P, SHOOTER_I, SHOOTER_D, SHOOTER_F);
+
             // Checks for shooter toggle, right shooter does PID, left shooter follows.
             boolean rightShooterOn = gamepad1.right_bumper;
             if (rightShooterOn) {
@@ -192,6 +198,9 @@ public class BasicTeleOp extends LinearOpMode {
 //                rightShooterMotor.setPower(0);
                 leftShooterMotor.setPower(0);
             }
+
+            boolean beamBreakState = !beamBreak.getState();
+
 
 
 //            boolean isCurrentlyAtSpeed = isShootingRequested && (avgShooterRpm >= SHOOTER_TARGET_RPM);
@@ -212,7 +221,10 @@ public class BasicTeleOp extends LinearOpMode {
             // --- INTAKE & INDEXER CONTROLS ---
             // Intake: 'A' button forwards (+1.0), 'Y' button reverse (-1.0)
             double intakePower = 0.0;
-            if (gamepad1.a) {
+
+             if (beamBreakState) {
+                intakePower = INTAKE_IDLE_POWER;
+             } else if (gamepad1.a) {
                 intakePower = 1.0;
             } else if (gamepad1.y) {
                 intakePower = -1.0;
@@ -244,6 +256,7 @@ public class BasicTeleOp extends LinearOpMode {
             telemetry.addData("rightRPM", rShootRpm);
             telemetry.addData("leftRPM", lShootRpm);
             telemetry.addData("avgRPM", avgShooterRpm);
+            telemetry.addData("beamBreak", beamBreakState);
             telemetry.update();
         }
     }

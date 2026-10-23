@@ -27,11 +27,13 @@ public class BasicTeleOp extends LinearOpMode {
     // MAX SHOOTER RPM: The max rpm the shooter can reach
     private static final double SHOOTER_MAX_RPM = 5800;
 
+    private static final double MAX_TICKS_PER_S = SHOOTER_MAX_RPM / 60.0 * TICKS_PER_REV;   // ~2707
+
     // Shooter PID values.
-    static final double SHOOTER_P = 5.0;
-    static final double SHOOTER_I = 0.0;
-    static final double SHOOTER_D = 0.0;
-    static final double SHOOTER_F = 0.0;
+    public static double SHOOTER_P = 10.0;
+    public static double SHOOTER_I = 3.0;
+    public static double SHOOTER_D = 0.0;
+    public static double SHOOTER_F = 32767.0 / MAX_TICKS_PER_S;
     public static double INDEXER_IDLE_POWER = -1.0;
     public static double SHOOTER_POWER = 0.8;
 
@@ -168,18 +170,18 @@ public class BasicTeleOp extends LinearOpMode {
             backRightMotor.setPower(backRightPower);
 
             // --- VELOCITY & RPM CALCULATIONS ---
-            double rShootRpm = (rightShooterMotor.getVelocity())/TICKS_PER_REV * 60;
-            double lShootRpm = (leftShooterMotor.getVelocity())/TICKS_PER_REV * 60;
+            double rShootRpm = ticksPerSecToRPM(rightShooterMotor.getVelocity());
+            double lShootRpm = ticksPerSecToRPM(leftShooterMotor.getVelocity());
             double avgShooterRpm = (Math.abs(rShootRpm) + Math.abs(lShootRpm)) / 2.0;
 
             // Checks for shooter toggle, right shooter does PID, left shooter follows.
             boolean rightShooterOn = gamepad1.right_bumper;
             if (rightShooterOn) {
                 rightShooterMotor.setVelocity(rpmToTicksPerSec(SHOOTER_TARGET_RPM));
-                //leftShooterMotor.setPower(rightShooterMotor.getPower());
+                leftShooterMotor.setPower(rightShooterMotor.getPower());
             } else {
                 rightShooterMotor.setPower(0);
-                //leftShooterMotor.setPower(0);
+                leftShooterMotor.setPower(0);
             }
 
             boolean leftShooterOn = gamepad1.left_bumper;

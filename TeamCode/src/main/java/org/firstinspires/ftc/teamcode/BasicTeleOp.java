@@ -14,12 +14,18 @@ import com.qualcomm.robotcore.util.ElapsedTime;
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import com.acmerobotics.dashboard.FtcDashboard;
 import com.acmerobotics.dashboard.telemetry.MultipleTelemetry;
+import com.acmerobotics.dashboard.config.Config;
 
+@Config
 @TeleOp(name = "BasicTeleop", group = "Testing")
 public class BasicTeleOp extends LinearOpMode {
 
     // Yellow Jacket placeholder ticks per revolution (change if needed)
     private static final double TICKS_PER_REV = 28;
+
+    public static double SHOOTER_POWER = 0.8;
+
+    public static double INDEXER_IDLE_POWER = -1.0;
 
     // TARGET RPM: Threshold for shooter to be considered at target/max speed
 //    private static final double SHOOTER_TARGET_RPM = 2300;
@@ -29,6 +35,8 @@ public class BasicTeleOp extends LinearOpMode {
 
     @Override
     public void runOpMode() {
+
+        telemetry = new MultipleTelemetry(telemetry, FtcDashboard.getInstance().getTelemetry());
         // Hardware Mapping using DcMotorEx for velocity/RPM reading
         DcMotorEx frontLeftMotor    = hardwareMap.get(DcMotorEx.class, "frontLeftMotor");
         DcMotorEx backLeftMotor     = hardwareMap.get(DcMotorEx.class, "backLeftMotor");
@@ -74,8 +82,6 @@ public class BasicTeleOp extends LinearOpMode {
         ElapsedTime shooterSpoolTimer = new ElapsedTime();
         boolean wasAtSpeed = false;
 
-        telemetry = new MultipleTelemetry(telemetry, FtcDashboard.getInstance().getTelemetry());
-
         waitForStart();
 
         if (isStopRequested()) return;
@@ -120,8 +126,8 @@ public class BasicTeleOp extends LinearOpMode {
             // Check if user is actively spinning up the shooter forward
             boolean isShootingRequested = gamepad1.right_trigger > 0.1;
             if (isShootingRequested) {
-                rightShooterMotor.setPower(0.48);
-                leftShooterMotor.setPower(0.48);
+                rightShooterMotor.setPower(SHOOTER_POWER);
+                leftShooterMotor.setPower(SHOOTER_POWER);
             } else {
                 rightShooterMotor.setPower(0);
                 leftShooterMotor.setPower(0);
@@ -163,7 +169,7 @@ public class BasicTeleOp extends LinearOpMode {
 //            } else if (autoIndexActive) {
 //                indexerPower = 1.0; // Auto-feed ball into shooter
             } else {
-                indexerPower = -1.0;
+                indexerPower = INDEXER_IDLE_POWER;
             }
             indexerMotor.setPower(indexerPower);
 
@@ -174,7 +180,9 @@ public class BasicTeleOp extends LinearOpMode {
             telemetry.addLine("=== SHOOTER & INDEXER ===");
 //            telemetry.addData("Shooter Target", "%.0f RPM (Target: %.0f)", avgShooterRpm, SHOOTER_TARGET_RPM);
             //telemetry.addData("Spun Up & Stable", autoIndexActive ? "READY TO FIRE (FEEDING)" : (isCurrentlyAtSpeed ? "STABILIZING..." : "SPOOLING/OFF"));
-            telemetry.addData("Shooter Motors", "L: %.0f RPM | R: %.0f RPM", lShootRpm, rShootRpm);
+            telemetry.addData("rightRPM", rShootRpm);
+            telemetry.addData("leftRPM", lShootRpm);
+            telemetry.addData("avgRPM", avgShooterRpm);
 
             telemetry.update();
         }

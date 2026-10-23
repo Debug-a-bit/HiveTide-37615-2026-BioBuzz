@@ -31,17 +31,17 @@ public class BasicTeleOp extends LinearOpMode {
     private static final double MAX_TICKS_PER_S = SHOOTER_MAX_RPM / 60.0 * TICKS_PER_REV;   // ~2707
 
     // Shooter PID values.
-    public static double SHOOTER_P = 10.0;
-    public static double SHOOTER_I = 3.0;
+    public static double SHOOTER_P = 13.0;
+    public static double SHOOTER_I = 0.0;
     public static double SHOOTER_D = 0.0;
-    public static double SHOOTER_F = 32767.0 / MAX_TICKS_PER_S;
+    public static double SHOOTER_F = 11.8;
     public static double INDEXER_IDLE_POWER = -1.0;
 
     public static double INTAKE_IDLE_POWER = 0;
     public static double SHOOTER_POWER = 0.8;
 
     // TARGET RPM: Threshold for shooter to be considered at target/max speed
-    public static double SHOOTER_TARGET_RPM = 2300;
+    public static double SHOOTER_TARGET_RPM = 3600;
 
     // Time (seconds) the shooter must continuously maintain target RPM before auto-feeding
     private static final double SHOOTER_STABILIZE_TIME_SEC = 0.35;
@@ -68,7 +68,7 @@ public class BasicTeleOp extends LinearOpMode {
         IMU imu = hardwareMap.get(IMU.class, "imu");
         IMU.Parameters parameters = new IMU.Parameters(new RevHubOrientationOnRobot(
                 RevHubOrientationOnRobot.LogoFacingDirection.UP,
-                RevHubOrientationOnRobot.UsbFacingDirection.FORWARD));
+                RevHubOrientationOnRobot.UsbFacingDirection.RIGHT));
         imu.initialize(parameters);
 
         // Set Directions (right side reversed for standard drivetrain)
@@ -222,7 +222,7 @@ public class BasicTeleOp extends LinearOpMode {
             // Intake: 'A' button forwards (+1.0), 'Y' button reverse (-1.0)
             double intakePower = 0.0;
 
-             if (beamBreakState) {
+             if (beamBreakState && !rightShooterOn) {
                 intakePower = INTAKE_IDLE_POWER;
              } else if (gamepad1.a) {
                 intakePower = 1.0;

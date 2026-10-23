@@ -221,9 +221,9 @@ public class BasicTeleOp extends LinearOpMode {
             // 1. Manual override: RB feeds forward (+1.0), LB reverses (-1.0)
             // 2. Auto trigger: fires when shooter reaches and sustains max speed
             double indexerPower;
-            if (gamepad1.right_bumper) {
+            if (gamepad1.right_trigger_pressed) {
                 indexerPower = 1.0;
-            } else if (gamepad1.left_bumper) {
+            } else if (gamepad1.left_trigger_pressed) {
                 indexerPower = -1.0;
 //            } else if (autoIndexActive) {
 //                indexerPower = 1.0; // Auto-feed ball into shooter

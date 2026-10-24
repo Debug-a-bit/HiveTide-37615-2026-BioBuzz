@@ -27,7 +27,6 @@ public class BasicTeleOp extends LinearOpMode {
 
     // MAX SHOOTER RPM: The max rpm the shooter can reach
     private static final double SHOOTER_MAX_RPM = 5800;
-
     private static final double MAX_TICKS_PER_S = SHOOTER_MAX_RPM / 60.0 * TICKS_PER_REV;   // ~2707
 
     // Shooter PID values.
@@ -35,8 +34,8 @@ public class BasicTeleOp extends LinearOpMode {
     public static double SHOOTER_I = 0.0;
     public static double SHOOTER_D = 0.0;
     public static double SHOOTER_F = 11.8;
-    public static double INDEXER_IDLE_POWER = -1.0;
 
+    public static double INDEXER_IDLE_POWER = -1.0;
     public static double INTAKE_IDLE_POWER = 0;
     public static double SHOOTER_POWER = 0.8;
 
@@ -44,13 +43,17 @@ public class BasicTeleOp extends LinearOpMode {
     public static double SHOOTER_TARGET_RPM = 3600;
 
     // Time (seconds) the shooter must continuously maintain target RPM before auto-feeding
-    private static final double SHOOTER_STABILIZE_TIME_SEC = 0.35;
+    public static double SHOOTER_STABILIZE_TIME_SEC = 0.35;
+
+    public static double SHOOTER_DROP_TOLERANCE_RPM = 100;
 
     @Override
     public void runOpMode() {
 
+        // Send data to FTC Dashboard as well
         telemetry = new MultipleTelemetry(telemetry, FtcDashboard.getInstance().getTelemetry());
-        // Hardware Mapping using DcMotorEx for velocity/RPM reading
+
+        // Hardware Mapping for motors and beam breaker
         DcMotorEx frontLeftMotor    = hardwareMap.get(DcMotorEx.class, "frontLeftMotor");
         DcMotorEx backLeftMotor     = hardwareMap.get(DcMotorEx.class, "backLeftMotor");
         DcMotorEx frontRightMotor   = hardwareMap.get(DcMotorEx.class, "frontRightMotor");
@@ -78,17 +81,8 @@ public class BasicTeleOp extends LinearOpMode {
         // Reverse indexerMotor so the indexer wheel spins inwards/forwards
         indexerMotor.setDirection(DcMotorSimple.Direction.REVERSE);
 
-        // This motor will run the PID and all calculations.
-        DcMotorEx[] shooterDriveMotor = {
-                rightShooterMotor
-        };
 
-        // This motor will use the motor.getPower() method on the shooterDriver to use the calculated PID values.
-        DcMotorEx[] shooterFollowMotor = {
-                leftShooterMotor
-        };
 
-        // Reset and set run mode for all 8 motors
         DcMotorEx[] nonShooterMotors = {
                 frontLeftMotor, backLeftMotor, frontRightMotor, backRightMotor, indexerMotor, intakeMotor};
 
@@ -98,23 +92,21 @@ public class BasicTeleOp extends LinearOpMode {
             motor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
         }
 
-        for (DcMotorEx motor : shooterFollowMotor) {
-            // When motor.setPower(0), have the motor go with any external forces.
-            motor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
-            motor.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
-            motor.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
-
-            motor.setDirection(DcMotorSimple.Direction.REVERSE); // Only if shooterFollowMotor is left.
-        }
+        // This motor will run the PID and all calculations.
+        DcMotorEx[] shooterDriveMotor = {
+                rightShooterMotor
+        };
 
         for (DcMotorEx motor : shooterDriveMotor ){
             // Create a Motor Config Type Based on the current motor settings (on hub)
             MotorConfigurationType shooter = motor.getMotorType().clone();
+
             // Adjust motor settings to fit the GoBilda motor specs.
             shooter.setTicksPerRev(TICKS_PER_REV);
             shooter.setGearing(1);
             shooter.setMaxRPM(SHOOTER_MAX_RPM);
             shooter.setAchieveableMaxRPMFraction(1.0);
+
             // Sets the shooterDriveMotor to the newly created shooter type.
             motor.setMotorType(shooter);
 
@@ -125,16 +117,24 @@ public class BasicTeleOp extends LinearOpMode {
             motor.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
         }
 
-        // Reverse left shooter so both shooter wheels spin inwards/forwards together
-        leftShooterMotor.setDirection(DcMotorSimple.Direction.REVERSE);
+        // This motor will use the motor.getPower() method on the shooterDriver to use the calculated PID values.
+        DcMotorEx[] shooterFollowMotor = {
+                leftShooterMotor
+        };
+        for (DcMotorEx motor : shooterFollowMotor) {
+            // When motor.setPower(0), have the motor go with any external forces.
+            motor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
+            motor.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+            motor.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
 
+            motor.setDirection(DcMotorSimple.Direction.REVERSE);
+        }
+
+        boolean wasAtSpeed = false;
+        ElapsedTime readyTimer = new ElapsedTime();
 
         telemetry.addData("Status", "All 8 Motors & IMU Initialized. Ready.");
         telemetry.update();
-
-        // Timer for confirming shooter stability at target speed
-        ElapsedTime shooterSpoolTimer = new ElapsedTime();
-        boolean wasAtSpeed = false;
 
         waitForStart();
 
@@ -177,12 +177,12 @@ public class BasicTeleOp extends LinearOpMode {
             double lShootRpm = ticksPerSecToRPM(leftShooterMotor.getVelocity());
             double avgShooterRpm = (Math.abs(rShootRpm) + Math.abs(lShootRpm)) / 2.0;
 
-            // PID Values for the shooter velocity.
+            // Apply PID Values for the shooter velocity.
             rightShooterMotor.setVelocityPIDFCoefficients(SHOOTER_P, SHOOTER_I, SHOOTER_D, SHOOTER_F);
 
             // Checks for shooter toggle, right shooter does PID, left shooter follows.
-            boolean rightShooterOn = gamepad1.right_bumper;
-            if (rightShooterOn) {
+            boolean shooterOn = gamepad1.right_bumper;
+            if (shooterOn) {
                 rightShooterMotor.setVelocity(rpmToTicksPerSec(SHOOTER_TARGET_RPM));
                 leftShooterMotor.setPower(rightShooterMotor.getPower());
             } else {
@@ -190,39 +190,12 @@ public class BasicTeleOp extends LinearOpMode {
                 leftShooterMotor.setPower(0);
             }
 
-            boolean leftShooterOn = gamepad1.left_bumper;
-            if (leftShooterOn) {
-//                rightShooterMotor.setVelocity(rpmToTicksPerSec(SHOOTER_TARGET_RPM));
-                leftShooterMotor.setPower(0.8);
-            } else {
-//                rightShooterMotor.setPower(0);
-                leftShooterMotor.setPower(0);
-            }
-
+            // Get beam breaker state
             boolean beamBreakState = !beamBreak.getState();
 
-
-
-//            boolean isCurrentlyAtSpeed = isShootingRequested && (avgShooterRpm >= SHOOTER_TARGET_RPM);
-//
-//            // Check if shooter has reached and stayed at speed
-//            if (isCurrentlyAtSpeed) {
-//                if (!wasAtSpeed) {
-//                    shooterSpoolTimer.reset();
-//                    wasAtSpeed = true;
-//                }
-//            } else {
-//                wasAtSpeed = false;
-//            }
-
-            // Auto-trigger condition: held at target speed for the stabilization duration
-//            boolean autoIndexActive = isCurrentlyAtSpeed && (shooterSpoolTimer.seconds() >= SHOOTER_STABILIZE_TIME_SEC);
-
-            // --- INTAKE & INDEXER CONTROLS ---
-            // Intake: 'A' button forwards (+1.0), 'Y' button reverse (-1.0)
             double intakePower = 0.0;
 
-             if (beamBreakState && !rightShooterOn) {
+            if (beamBreakState && !shooterOn) {
                 intakePower = INTAKE_IDLE_POWER;
              } else if (gamepad1.a) {
                 intakePower = 1.0;
@@ -231,16 +204,28 @@ public class BasicTeleOp extends LinearOpMode {
             }
             intakeMotor.setPower(intakePower);
 
-            // Indexer Priority:
-            // 1. Manual override: RB feeds forward (+1.0), LB reverses (-1.0)
-            // 2. Auto trigger: fires when shooter reaches and sustains max speed
+            double minRpm = Math.min(Math.abs(rShootRpm), Math.abs(lShootRpm));
+
+            if (!shooterOn) {
+                wasAtSpeed = false;                                   // reset when shooter is off
+            } else if (!wasAtSpeed) {
+                if (minRpm >= SHOOTER_TARGET_RPM) {
+                    wasAtSpeed = true;                                // reached target: start timing
+                    readyTimer.reset();
+                }
+            } else if (minRpm < SHOOTER_TARGET_RPM - SHOOTER_DROP_TOLERANCE_RPM) {
+                wasAtSpeed = false;                                   // real drop: lose ready state
+            }
+
+            boolean readyToFeed = wasAtSpeed && readyTimer.seconds() >= SHOOTER_STABILIZE_TIME_SEC;
+
             double indexerPower;
             if (gamepad1.right_trigger_pressed) {
-                indexerPower = 1.0;
+                indexerPower = 1.0;                  // manual override (note: see below)
             } else if (gamepad1.left_trigger_pressed) {
                 indexerPower = -1.0;
-//            } else if (autoIndexActive) {
-//                indexerPower = 1.0; // Auto-feed ball into shooter
+            } else if (readyToFeed) {
+                indexerPower = 1.0;                  // auto-feed only when up to speed
             } else {
                 indexerPower = INDEXER_IDLE_POWER;
             }
@@ -251,15 +236,17 @@ public class BasicTeleOp extends LinearOpMode {
             telemetry.addData("Heading (deg)", "%.1f (Press Options/Start to reset)", Math.toDegrees(botHeading));
 
             telemetry.addLine("=== SHOOTER & INDEXER ===");
-//            telemetry.addData("Shooter Target", "%.0f RPM (Target: %.0f)", avgShooterRpm, SHOOTER_TARGET_RPM);
-            //telemetry.addData("Spun Up & Stable", autoIndexActive ? "READY TO FIRE (FEEDING)" : (isCurrentlyAtSpeed ? "STABILIZING..." : "SPOOLING/OFF"));
             telemetry.addData("rightRPM", rShootRpm);
             telemetry.addData("leftRPM", lShootRpm);
             telemetry.addData("avgRPM", avgShooterRpm);
             telemetry.addData("beamBreak", beamBreakState);
+            telemetry.addData("readyToFeed", readyToFeed ? 1 : 0);
+            telemetry.addData("minRpm", minRpm);
             telemetry.update();
         }
     }
+
+    // Unit Conversion Functions
     static double rpmToTicksPerSec  (double rpm) {
         return rpm / 60.0 * TICKS_PER_REV;
     }

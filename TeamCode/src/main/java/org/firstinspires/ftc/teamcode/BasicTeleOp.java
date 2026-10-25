@@ -1,4 +1,5 @@
 package org.firstinspires.ftc.teamcode;
+import org.firstinspires.ftc.teamcode.MovingAverage;
 
 import com.qualcomm.hardware.motors.GoBILDA5201Series;
 import com.qualcomm.hardware.rev.RevHubOrientationOnRobot;
@@ -17,6 +18,9 @@ import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import com.acmerobotics.dashboard.FtcDashboard;
 import com.acmerobotics.dashboard.telemetry.MultipleTelemetry;
 import com.acmerobotics.dashboard.config.Config;
+import com.qualcomm.robotcore.hardware.VoltageSensor;
+import com.qualcomm.robotcore.util.Range;
+
 
 @Config
 @TeleOp(name = "BasicTeleop", group = "Testing")
@@ -27,16 +31,34 @@ public class BasicTeleOp extends LinearOpMode {
 
     // MAX SHOOTER RPM: The max rpm the shooter can reach
     private static final double SHOOTER_MAX_RPM = 5800;
+    private static final double TESTED_SHOOTER_MAX_RPM = 5200;
+
+    private static final double TESTED_SHOOTER_POWER = 1.0;
+    private static final double TESTED_SHOOTER_BATTERY_VOLTAGE  = 12.131;
+    private static final double MIN_BATTERY_VOLTAGE = 11.3;
+
+    private static final double TESTED_SHOOTER_POWER_PER_RPM  = TESTED_SHOOTER_POWER/TESTED_SHOOTER_MAX_RPM;
+
+
     private static final double MAX_TICKS_PER_S = SHOOTER_MAX_RPM / 60.0 * TICKS_PER_REV;   // ~2707
 
     // Shooter PID values.
-    public static double SHOOTER_P = 13.0;
+    public static double SHOOTER_P = 0.0;
     public static double SHOOTER_I = 0.0;
     public static double SHOOTER_D = 0.0;
     public static double SHOOTER_F = 11.8;
+    public static double SHOOTER_S = 0.38;
+    public static double SHOOTER_V = (MIN_BATTERY_VOLTAGE - SHOOTER_S)/TESTED_SHOOTER_MAX_RPM;
 
     public static double INDEXER_IDLE_POWER = -1.0;
+
+    public static double INDEXER_RUNNING_POWER = 1.0;
+
+    public static double INDEXER_REVERSE_POWER = -1.0;
     public static double INTAKE_IDLE_POWER = 0;
+    public static double INTAKE_RUNNING_POWER = 1.0;
+
+    public static double INTAKE_REVERSE_POWER = -1.0;
     public static double SHOOTER_POWER = 0.8;
 
     // TARGET RPM: Threshold for shooter to be considered at target/max speed
@@ -71,7 +93,7 @@ public class BasicTeleOp extends LinearOpMode {
         IMU imu = hardwareMap.get(IMU.class, "imu");
         IMU.Parameters parameters = new IMU.Parameters(new RevHubOrientationOnRobot(
                 RevHubOrientationOnRobot.LogoFacingDirection.UP,
-                RevHubOrientationOnRobot.UsbFacingDirection.RIGHT));
+                RevHubOrientationOnRobot.UsbFacingDirection.LEFT));
         imu.initialize(parameters);
 
         // Set Directions (right side reversed for standard drivetrain)
@@ -132,6 +154,12 @@ public class BasicTeleOp extends LinearOpMode {
 
         boolean wasAtSpeed = false;
         ElapsedTime readyTimer = new ElapsedTime();
+        boolean magFull = false;
+        double intakePower = 0.0;
+
+        MovingAverage rightRpmAvg = new MovingAverage(10);
+        MovingAverage leftRpmAvg  = new MovingAverage(10);
+
 
         telemetry.addData("Status", "All 8 Motors & IMU Initialized. Ready.");
         telemetry.update();
@@ -141,6 +169,31 @@ public class BasicTeleOp extends LinearOpMode {
         if (isStopRequested()) return;
 
         while (opModeIsActive()) {
+
+            // --- VELOCITY & RPM CALCULATIONS ---
+            double rShootRpm = rightRpmAvg.update(ticksPerSecToRPM(rightShooterMotor.getVelocity()));
+            double lShootRpm = leftRpmAvg.update(ticksPerSecToRPM(leftShooterMotor.getVelocity()));
+            double avgShooterRpm = (Math.abs(rShootRpm) + Math.abs(lShootRpm)) / 2.0;
+
+            // PID
+            double PID_error = SHOOTER_TARGET_RPM - rShootRpm;
+
+            double PID_V = SHOOTER_V * SHOOTER_TARGET_RPM;
+            double PID_S = Math.signum(SHOOTER_TARGET_RPM)*SHOOTER_S;
+            double PID_P = SHOOTER_P * PID_error;
+
+            double PID_calculated = PID_S + PID_V + PID_P;
+            double PID_clamped = Range.clip(PID_calculated, -MIN_BATTERY_VOLTAGE, MIN_BATTERY_VOLTAGE);
+
+// Inside your OpMode class or init() method:
+            VoltageSensor voltageSensor = hardwareMap.get(VoltageSensor.class, "Control Hub");
+            double currentVoltage = voltageSensor.getVoltage();
+
+            double PIDPower = PID_clamped/currentVoltage;
+
+
+
+
             // --- FIELD-CENTRIC DRIVE KINEMATICS ---
             double y  = -gamepad1.left_stick_y;  // Forward / backward (inverted)
             double x  = gamepad1.left_stick_x;   // Strafe left / right
@@ -161,8 +214,8 @@ public class BasicTeleOp extends LinearOpMode {
 
             // Normalize powers so no motor exceeds 1.0 while preserving ratios
             double denominator = Math.max(Math.abs(rotY) + Math.abs(rotX) + Math.abs(rx), 1.0);
-            double frontLeftPower  = (rotY - rotX + rx) / denominator;
-            double backLeftPower   = (rotY + rotX + rx) / denominator;
+            double frontLeftPower  = (rotY + rotX + rx) / denominator;
+            double backLeftPower   = (rotY - rotX + rx) / denominator;
             double frontRightPower = (rotY - rotX - rx) / denominator;
             double backRightPower  = (rotY + rotX - rx) / denominator;
 
@@ -172,39 +225,49 @@ public class BasicTeleOp extends LinearOpMode {
             frontRightMotor.setPower(frontRightPower);
             backRightMotor.setPower(backRightPower);
 
-            // --- VELOCITY & RPM CALCULATIONS ---
-            double rShootRpm = ticksPerSecToRPM(rightShooterMotor.getVelocity());
-            double lShootRpm = ticksPerSecToRPM(leftShooterMotor.getVelocity());
-            double avgShooterRpm = (Math.abs(rShootRpm) + Math.abs(lShootRpm)) / 2.0;
+
 
             // Apply PID Values for the shooter velocity.
             rightShooterMotor.setVelocityPIDFCoefficients(SHOOTER_P, SHOOTER_I, SHOOTER_D, SHOOTER_F);
 
-            // Checks for shooter toggle, right shooter does PID, left shooter follows.
+            // Get beam breaker state
+            boolean beamBreakBroken = !beamBreak.getState();
             boolean shooterOn = gamepad1.right_bumper;
+
+            if (beamBreakBroken && !shooterOn) {
+                intakeMotor.setPower(INTAKE_REVERSE_POWER);
+                indexerMotor.setPower(INDEXER_REVERSE_POWER);
+                rightShooterMotor.setPower(-1);
+                leftShooterMotor.setPower(-1);
+                magFull = true;
+            } else if (gamepad1.y) {
+                intakePower = INTAKE_REVERSE_POWER;
+                magFull = false;
+            } else if (!magFull) {
+                intakePower = INTAKE_RUNNING_POWER;
+            } else if (!shooterOn) {
+                intakePower = INTAKE_IDLE_POWER;
+                rightShooterMotor.setPower(0);
+                leftShooterMotor.setPower(0);
+            }
+            intakeMotor.setPower(intakePower);
+
+            // Checks for shooter toggle, right shooter does PID, left shooter follows.
+
             if (shooterOn) {
-                rightShooterMotor.setVelocity(rpmToTicksPerSec(SHOOTER_TARGET_RPM));
+                rightShooterMotor.setPower(PIDPower);
                 leftShooterMotor.setPower(rightShooterMotor.getPower());
+            } else if (gamepad1.left_bumper){
+                rightShooterMotor.setPower(PIDPower);
+                leftShooterMotor.setPower(PIDPower);
             } else {
                 rightShooterMotor.setPower(0);
                 leftShooterMotor.setPower(0);
             }
 
-            // Get beam breaker state
-            boolean beamBreakState = !beamBreak.getState();
 
-            double intakePower = 0.0;
 
-            if (beamBreakState && !shooterOn) {
-                intakePower = INTAKE_IDLE_POWER;
-             } else if (gamepad1.a) {
-                intakePower = 1.0;
-            } else if (gamepad1.y) {
-                intakePower = -1.0;
-            }
-            intakeMotor.setPower(intakePower);
-
-            double minRpm = Math.min(Math.abs(rShootRpm), Math.abs(lShootRpm));
+            double minRpm = ticksPerSecToRPM(rightShooterMotor.getVelocity());
 
             if (!shooterOn) {
                 wasAtSpeed = false;                                   // reset when shooter is off
@@ -221,11 +284,14 @@ public class BasicTeleOp extends LinearOpMode {
 
             double indexerPower;
             if (gamepad1.right_trigger_pressed) {
-                indexerPower = 1.0;                  // manual override (note: see below)
+                indexerPower = INDEXER_RUNNING_POWER;                  // manual override (note: see below)
             } else if (gamepad1.left_trigger_pressed) {
-                indexerPower = -1.0;
+                indexerPower = INDEXER_REVERSE_POWER;
             } else if (readyToFeed) {
-                indexerPower = 1.0;                  // auto-feed only when up to speed
+                indexerPower = INDEXER_RUNNING_POWER;// auto-feed only when up to speed
+                magFull = false;
+            } else if (magFull) {
+                indexerPower = 0;
             } else {
                 indexerPower = INDEXER_IDLE_POWER;
             }
@@ -238,10 +304,17 @@ public class BasicTeleOp extends LinearOpMode {
             telemetry.addLine("=== SHOOTER & INDEXER ===");
             telemetry.addData("rightRPM", rShootRpm);
             telemetry.addData("leftRPM", lShootRpm);
+            telemetry.addData("rightShooterPower", rightShooterMotor.getPower());
             telemetry.addData("avgRPM", avgShooterRpm);
-            telemetry.addData("beamBreak", beamBreakState);
-            telemetry.addData("readyToFeed", readyToFeed ? 1 : 0);
+            telemetry.addData("targetRPM", SHOOTER_TARGET_RPM);
             telemetry.addData("minRpm", minRpm);
+            telemetry.addData("beamBreak", beamBreakBroken);
+            telemetry.addData("readyToFeed", readyToFeed ? 1 : 0);
+
+            telemetry.addData("PIDPower", PIDPower);
+
+            telemetry.addData("batteryVoltage", currentVoltage);
+
             telemetry.update();
         }
     }

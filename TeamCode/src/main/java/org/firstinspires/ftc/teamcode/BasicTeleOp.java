@@ -52,7 +52,7 @@ public class BasicTeleOp extends LinearOpMode {
 
     public static double INDEXER_IDLE_POWER = -1.0;
 
-    public static double INDEXER_RUNNING_POWER = 1.0;
+    public static double INDEXER_RUNNING_POWER = 0.7;
 
     public static double INDEXER_REVERSE_POWER = -1.0;
     public static double INTAKE_IDLE_POWER = 0;
@@ -62,12 +62,12 @@ public class BasicTeleOp extends LinearOpMode {
     public static double SHOOTER_POWER = 0.8;
 
     // TARGET RPM: Threshold for shooter to be considered at target/max speed
-    public static double SHOOTER_TARGET_RPM = 3600;
+    public static double SHOOTER_TARGET_RPM = 3350;
 
     // Time (seconds) the shooter must continuously maintain target RPM before auto-feeding
-    public static double SHOOTER_STABILIZE_TIME_SEC = 0.35;
+    public static double SHOOTER_STABILIZE_TIME_SEC = 0.75;
 
-    public static double SHOOTER_DROP_TOLERANCE_RPM = 100;
+    public static double SHOOTER_DROP_TOLERANCE_RPM = 50;
 
     @Override
     public void runOpMode() {
@@ -267,7 +267,7 @@ public class BasicTeleOp extends LinearOpMode {
 
 
 
-            double minRpm = ticksPerSecToRPM(rightShooterMotor.getVelocity());
+            double minRpm = Math.abs(ticksPerSecToRPM(rightShooterMotor.getVelocity()));
 
             if (!shooterOn) {
                 wasAtSpeed = false;                                   // reset when shooter is off

@@ -10,6 +10,7 @@ import com.qualcomm.robotcore.util.ElapsedTime;
 import org.firstinspires.ftc.teamcode.subsystems.FieldCentricDrive;
 import org.firstinspires.ftc.teamcode.subsystems.Feeder;
 import org.firstinspires.ftc.teamcode.subsystems.Shooter;
+import org.firstinspires.ftc.teamcode.subsystems.SideServos;
 import org.firstinspires.ftc.teamcode.util.VoltageMonitor;
 
 /**
@@ -17,11 +18,13 @@ import org.firstinspires.ftc.teamcode.util.VoltageMonitor;
  *   Left stick      drive / strafe (field-centric)
  *   Right stick X   turn
  *   Options         reset heading ("forward" = way the robot faces now)
- *   Right bumper    hold to shoot: spin up, auto-feed once at speed
+ *   Right bumper    hold to shoot: spin up, then auto-feed all balls once at speed
  *   Left bumper     hold to spin up only (no auto-feed)
- *   Y               reject: reverse intake, clear "magazine full"
- *   Right trigger   manual indexer feed
- *   Left trigger    manual indexer reverse
+ *   Y               reverse intake and indexer
+ *   Right trigger   manual intake feed
+ *   Left trigger    eject (reverse intake and clear mag full)
+ *   A               side servos to angle A
+ *   B               side servos to angle B
  */
 @TeleOp(name = "BasicTeleop", group = "Testing")
 public class BasicTeleOp extends LinearOpMode {
@@ -38,6 +41,7 @@ public class BasicTeleOp extends LinearOpMode {
         FieldCentricDrive drive = new FieldCentricDrive(hardwareMap);
         Shooter shooter         = new Shooter(hardwareMap);
         Feeder feeder           = new Feeder(hardwareMap);
+        SideServos sideServos   = new SideServos(hardwareMap);
         VoltageMonitor battery  = new VoltageMonitor(hardwareMap);
 
         telemetry.addData("Status", "Initialized. Ready.");
@@ -45,6 +49,8 @@ public class BasicTeleOp extends LinearOpMode {
 
         waitForStart();
         if (isStopRequested()) return;
+
+        sideServos.goToA();   // servos don't move until first commanded
 
         ElapsedTime loopTimer = new ElapsedTime();
 
@@ -66,11 +72,15 @@ public class BasicTeleOp extends LinearOpMode {
 
             // ================= INTAKE & INDEXER =================
             feeder.update(
-                    shooting,
-                    shooting && shooter.isReadyToFeed(),
-                    gamepad1.y,
-                    gamepad1.right_trigger_pressed,
-                    gamepad1.left_trigger_pressed);
+                    shooting, // Currently shooting Variable
+                    shooting && shooter.isReadyToFeed(), // Is the shooter reved up check.
+                    gamepad1.left_trigger_pressed, // Eject Keybind
+                    gamepad1.right_trigger_pressed, // Manual Intake Keybind
+                    gamepad1.y); // Run intake and index backwards.
+
+            // ================= SIDE SERVOS =================
+            if (gamepad1.a)      sideServos.goToA();
+            else if (gamepad1.b) sideServos.goToB();
 
             // ================= TELEMETRY (graph these in Dashboard) =================
             telemetry.addData("heading (deg)", "%.1f", drive.getHeadingDegrees());
@@ -79,8 +89,10 @@ public class BasicTeleOp extends LinearOpMode {
             telemetry.addData("filteredRPM", shooter.getRpm());
             telemetry.addData("shooterPower", shooter.getPower());
             telemetry.addData("readyToFeed", shooter.isReadyToFeed() ? 1 : 0);
+            telemetry.addData("volleyActive", feeder.isVolleyActive() ? 1 : 0);
             telemetry.addData("beamBroken", feeder.isBeamBroken());
             telemetry.addData("magazineFull", feeder.isMagazineFull());
+            telemetry.addData("sideServoDeg", sideServos.getAngle());
             telemetry.addData("batteryVoltage", batteryVoltage);
             telemetry.addData("loopMs", loopTimer.milliseconds());
             loopTimer.reset();

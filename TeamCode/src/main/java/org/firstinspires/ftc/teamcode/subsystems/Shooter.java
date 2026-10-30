@@ -27,15 +27,15 @@ public class Shooter {
     public static final double TICKS_PER_REV = 28;
 
     // ---- Controller (live-tunable in FTC Dashboard) ----
-    public static double kS = 0.38;      // volts needed just to start turning
-    public static double kV = 0.00226;   // volts per RPM  (12.131 V / 5200 RPM test, minus kS)
-    public static double kP = 0.0;       // volts per RPM of error
+    public static double kS = 0.7440;      // volts needed just to start turning
+    public static double kV = 0.002092;   // volts per RPM, measured automatically
+    public static double kP = 0.05;       // volts per RPM of error
 
-    public static double TARGET_RPM = 3350;
-    public static double FILTER_SEC = 0.03;   // speed smoothing; lower = less delay
+    public static double TARGET_RPM = 3100;
+    public static double FILTER_SEC = 0.005;   // speed smoothing; lower = less delay
 
     // ---- "Ready to feed" check ----
-    public static double READY_TIME_SEC     = 0.75; // must hold speed this long before feeding
+    public static double READY_TIME_SEC     = 0.25; // must hold speed this long before feeding
     public static double DROP_TOLERANCE_RPM = 50;   // dropping this far below target = not ready
 
     private enum Mode { OFF, VELOCITY, OPEN_LOOP }

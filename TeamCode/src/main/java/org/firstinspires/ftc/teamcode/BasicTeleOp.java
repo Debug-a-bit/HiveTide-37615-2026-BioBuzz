@@ -50,7 +50,7 @@ public class BasicTeleOp extends LinearOpMode {
     public static double SHOOTER_S = 0.38;
     public static double SHOOTER_V = (MIN_BATTERY_VOLTAGE - SHOOTER_S)/TESTED_SHOOTER_MAX_RPM;
 
-    public static double INDEXER_IDLE_POWER = -1.0;
+    public static double INDEXER_IDLE_POWER = 0.0;
 
     public static double INDEXER_RUNNING_POWER = 0.7;
 
@@ -156,6 +156,7 @@ public class BasicTeleOp extends LinearOpMode {
         ElapsedTime readyTimer = new ElapsedTime();
         boolean magFull = false;
         double intakePower = 0.0;
+        boolean shouldReverse = false;
 
         MovingAverage rightRpmAvg = new MovingAverage(10);
         MovingAverage leftRpmAvg  = new MovingAverage(10);
@@ -234,23 +235,47 @@ public class BasicTeleOp extends LinearOpMode {
             boolean beamBreakBroken = !beamBreak.getState();
             boolean shooterOn = gamepad1.right_bumper;
 
+            boolean readyToFeed = wasAtSpeed && readyTimer.seconds() >= SHOOTER_STABILIZE_TIME_SEC;
+
             if (beamBreakBroken && !shooterOn) {
-                intakeMotor.setPower(INTAKE_REVERSE_POWER);
-                indexerMotor.setPower(INDEXER_REVERSE_POWER);
-                rightShooterMotor.setPower(-1);
-                leftShooterMotor.setPower(-1);
                 magFull = true;
-            } else if (gamepad1.y) {
-                intakePower = INTAKE_REVERSE_POWER;
+                shouldReverse = true;
+            } else if (!beamBreakBroken) {
+                shouldReverse = false;
+            } else if (readyToFeed) {
                 magFull = false;
-            } else if (!magFull) {
+            }
+
+
+            if (gamepad1.right_trigger_pressed) {
+                intakePower = INDEXER_RUNNING_POWER;                  // manual override (note: see below)
+            } else if (gamepad1.left_trigger_pressed) {
+                intakePower = INDEXER_REVERSE_POWER;
+            } else if (shouldReverse) {
+                intakePower = INTAKE_REVERSE_POWER;
+            } else if (readyToFeed) {
                 intakePower = INTAKE_RUNNING_POWER;
-            } else if (!shooterOn) {
+            } else if (magFull) {
                 intakePower = INTAKE_IDLE_POWER;
-                rightShooterMotor.setPower(0);
-                leftShooterMotor.setPower(0);
             }
             intakeMotor.setPower(intakePower);
+
+            double indexerPower;
+
+            if (gamepad1.right_trigger_pressed) {
+                indexerPower = INDEXER_RUNNING_POWER;                  // manual override (note: see below)
+            } else if (gamepad1.left_trigger_pressed) {
+                indexerPower = INDEXER_REVERSE_POWER;
+            } else if (shouldReverse) {
+                indexerPower = INDEXER_REVERSE_POWER;
+            } else if (readyToFeed) {
+                indexerPower = INDEXER_RUNNING_POWER;// auto-feed only when up to speed
+            } else if (magFull) {
+                indexerPower = 0;
+            } else {
+                indexerPower = INDEXER_IDLE_POWER;
+            }
+            indexerMotor.setPower(indexerPower);
 
             // Checks for shooter toggle, right shooter does PID, left shooter follows.
 
@@ -265,8 +290,6 @@ public class BasicTeleOp extends LinearOpMode {
                 leftShooterMotor.setPower(0);
             }
 
-
-
             double minRpm = Math.abs(ticksPerSecToRPM(rightShooterMotor.getVelocity()));
 
             if (!shooterOn) {
@@ -280,22 +303,7 @@ public class BasicTeleOp extends LinearOpMode {
                 wasAtSpeed = false;                                   // real drop: lose ready state
             }
 
-            boolean readyToFeed = wasAtSpeed && readyTimer.seconds() >= SHOOTER_STABILIZE_TIME_SEC;
 
-            double indexerPower;
-            if (gamepad1.right_trigger_pressed) {
-                indexerPower = INDEXER_RUNNING_POWER;                  // manual override (note: see below)
-            } else if (gamepad1.left_trigger_pressed) {
-                indexerPower = INDEXER_REVERSE_POWER;
-            } else if (readyToFeed) {
-                indexerPower = INDEXER_RUNNING_POWER;// auto-feed only when up to speed
-                magFull = false;
-            } else if (magFull) {
-                indexerPower = 0;
-            } else {
-                indexerPower = INDEXER_IDLE_POWER;
-            }
-            indexerMotor.setPower(indexerPower);
 
             // --- TELEMETRY DASHBOARD ---
             telemetry.addLine("=== DRIVETRAIN (FIELD-CENTRIC) ===");

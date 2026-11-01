@@ -73,7 +73,7 @@ public class BasicTeleOp extends LinearOpMode {
 // On the press only: reset the controller and lock the target
             if (gamepad1.xWasPressed()) {
                 drive.resetAlign();
-                targetHeading = Math.toRadians(rightCellTilted ? 90 : -90);
+                targetHeading = Math.toRadians(rightCellTilted ? -90 : 90);
             }
 
             double x = gamepad1.left_stick_x;

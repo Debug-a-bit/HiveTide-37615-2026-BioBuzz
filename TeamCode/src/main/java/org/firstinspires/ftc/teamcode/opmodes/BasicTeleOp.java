@@ -64,28 +64,22 @@ public class BasicTeleOp extends LinearOpMode {
             // ================= DRIVE =================
             if (gamepad1.options) drive.resetHeading();
 
-            if (gamepad2.leftBumperWasReleased()) {
+// Driver 2 flips which hive cell is tilted
+            if (gamepad2.rightBumperWasReleased()) {
                 rightCellTilted = !rightCellTilted;
-                if (rightCellTilted) {
-                    cellTilted = "Right cell tilted";
-                } else {
-                    cellTilted = "Left cell tilted";
-                }
             }
+            cellTilted = rightCellTilted ? "RIGHT" : "LEFT";
 
-            if (gamepad1.leftBumperWasPressed()) {   // fires once, on the press
+// On the press only: reset the controller and lock the target
+            if (gamepad1.xWasPressed()) {
                 drive.resetAlign();
-                if (rightCellTilted) {
-                    targetHeading = Math.toRadians(90);
-                } else {
-                    targetHeading = Math.toRadians(-90);
-                }
+                targetHeading = Math.toRadians(rightCellTilted ? 90 : -90);
             }
 
             double x = gamepad1.left_stick_x;
             double y = -gamepad1.left_stick_y;
 
-            if (gamepad1.left_bumper) {              // true the whole time it's held
+            if (gamepad1.x) {                            // held
                 drive.alignWithHiveTilt(x, y, targetHeading);
             } else {
                 drive.drive(x, y, gamepad1.right_stick_x);

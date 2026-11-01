@@ -54,7 +54,7 @@ public class BasicTeleOp extends LinearOpMode {
 
         ElapsedTime loopTimer = new ElapsedTime();
 
-        boolean rightCellTilted = false;
+        boolean rightCellTilted = true;
         String cellTilted = null;
         double targetHeading = 0.0;   // radians
 

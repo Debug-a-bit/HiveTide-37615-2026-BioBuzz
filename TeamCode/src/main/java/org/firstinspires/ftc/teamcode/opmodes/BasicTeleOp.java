@@ -54,12 +54,42 @@ public class BasicTeleOp extends LinearOpMode {
 
         ElapsedTime loopTimer = new ElapsedTime();
 
+        boolean rightCellTilted = false;
+        String cellTilted = null;
+        double targetHeading = 0.0;   // radians
+
         while (opModeIsActive()) {
             double batteryVoltage = battery.update();
 
             // ================= DRIVE =================
             if (gamepad1.options) drive.resetHeading();
-            drive.drive(gamepad1.left_stick_x, -gamepad1.left_stick_y, gamepad1.right_stick_x);
+
+            if (gamepad2.leftBumperWasReleased()) {
+                rightCellTilted = !rightCellTilted;
+                if (rightCellTilted) {
+                    cellTilted = "Right cell tilted";
+                } else {
+                    cellTilted = "Left cell tilted";
+                }
+            }
+
+            if (gamepad1.leftBumperWasPressed()) {   // fires once, on the press
+                drive.resetAlign();
+                if (rightCellTilted) {
+                    targetHeading = Math.toRadians(90);
+                } else {
+                    targetHeading = Math.toRadians(-90);
+                }
+            }
+
+            double x = gamepad1.left_stick_x;
+            double y = -gamepad1.left_stick_y;
+
+            if (gamepad1.left_bumper) {              // true the whole time it's held
+                drive.alignWithHiveTilt(x, y, targetHeading);
+            } else {
+                drive.drive(x, y, gamepad1.right_stick_x);
+            }
 
             // ================= SHOOTER =================
             boolean shooting = gamepad1.right_bumper;
@@ -95,6 +125,9 @@ public class BasicTeleOp extends LinearOpMode {
             telemetry.addData("sideServoDeg", sideServos.getAngle());
             telemetry.addData("batteryVoltage", batteryVoltage);
             telemetry.addData("loopMs", loopTimer.milliseconds());
+            telemetry.addData("Cell tilted", cellTilted);
+            telemetry.addData("Target (deg)", Math.toDegrees(targetHeading));
+            telemetry.addData("Align error (deg)", drive.getAlignErrorDegrees());
             loopTimer.reset();
             telemetry.update();
         }

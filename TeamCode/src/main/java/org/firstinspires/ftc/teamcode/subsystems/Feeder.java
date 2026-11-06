@@ -6,6 +6,7 @@ import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.DigitalChannel;
 import com.qualcomm.robotcore.hardware.HardwareMap;
+import com.qualcomm.robotcore.util.ElapsedTime;
 
 /**
  * Intake + indexer + the beam break that detects a full magazine.
@@ -23,6 +24,8 @@ import com.qualcomm.robotcore.hardware.HardwareMap;
  *   - Shooter first ready             -> volley starts: indexer keeps feeding every
  *     ball (no re-waiting for speed between shots) until shoot is released.
  *   - Balls leave / reject pressed    -> magazine no longer full; intake runs again.
+ *   - Intake stalled (big ball stuck) -> intake runs backwards for JAM_REVERSE_SEC to spit it
+ *     out, then resumes. Stalled = running forward but slower than JAM_VELOCITY for JAM_DETECT_SEC.
  */
 @Config
 public class Feeder {
@@ -31,6 +34,14 @@ public class Feeder {
     public static boolean AUTO_FEED_ENABLED   = true;
     /** False = intake never runs on its own; use the manual triggers (reject and back-off still work). */
     public static boolean AUTO_INTAKE_ENABLED = true;
+    /** False = never auto-reverse the intake when it stalls. */
+    public static boolean JAM_EJECT = true;
+    /** Intake slower than this (ticks/sec) while powered forward counts as stalled. Watch "intakeVelocity" to tune. */
+    public static double JAM_VELOCITY    = 150;
+    /** Must stay stalled this long before ejecting (ignores the moment it starts from rest). */
+    public static double JAM_DETECT_SEC  = 0.15;
+    /** How long to run the intake backwards to clear a jam. */
+    public static double JAM_REVERSE_SEC = 0.35;
 
     public static double INTAKE_RUNNING_POWER = 1.0;
     public static double INTAKE_IDLE_POWER    = 0.0;
@@ -51,6 +62,11 @@ public class Feeder {
     private boolean backingOff = false;
     private boolean manual = false;
     private boolean volley = false;
+    private boolean jamEjecting = false;
+    private double intakeVelocity = 0;
+    private double lastIntakePower = 0;
+    private final ElapsedTime stallTimer = new ElapsedTime();
+    private final ElapsedTime ejectTimer = new ElapsedTime();
 
     public Feeder(HardwareMap hardwareMap) {
         intake    = hardwareMap.get(DcMotorEx.class, "intakeMotor");
@@ -94,25 +110,50 @@ public class Feeder {
 
         // Automatic back-off only when the driver isn't controlling the feeder
         backingOff = beamBroken && !shooting && !manual;
+        updateJam();
 
         // ---- Intake ----
         double intakePower;
         if (manualFeed)                intakePower = INTAKE_RUNNING_POWER;
-        else if (manualReverse)        intakePower = INTAKE_REVERSE_POWER;
-        else if (backingOff || reject) intakePower = INTAKE_REVERSE_POWER;
+        else if (manualReverse || backingOff || reject || jamEjecting) intakePower = INTAKE_REVERSE_POWER;
         else if (AUTO_INTAKE_ENABLED && !magazineFull) intakePower = INTAKE_RUNNING_POWER;
         else                           intakePower = INTAKE_IDLE_POWER;
         intake.setPower(intakePower);
+        lastIntakePower = intakePower;
 
         // ---- Indexer ----
         double indexerPower;
         if (manualFeed)          indexerPower = INDEXER_RUNNING_POWER;
-        else if (manualReverse)  indexerPower = INDEXER_REVERSE_POWER;
-        else if (backingOff)     indexerPower = INDEXER_REVERSE_POWER;
+        else if (manualReverse || backingOff)  indexerPower = INDEXER_REVERSE_POWER;
         else if (volley)         indexerPower = INDEXER_RUNNING_POWER;   // auto-feed every ball
         else if (magazineFull || !AUTO_FEED_ENABLED)   indexerPower = 0;                       // hold
         else                     indexerPower = INDEXER_IDLE_POWER;
         indexer.setPower(indexerPower);
+    }
+
+    /**
+     * Starts a timed reverse once the intake has been stalled for JAM_DETECT_SEC while running
+     * forward on its own. The driver taking manual control cancels it.
+     */
+    private void updateJam() {
+        intakeVelocity = intake.getVelocity();
+
+        if (jamEjecting) {
+            if (manual || ejectTimer.seconds() >= JAM_REVERSE_SEC) {
+                jamEjecting = false;
+                stallTimer.reset();   // fresh start when it goes forward again
+            }
+            return;
+        }
+
+        boolean stalled = JAM_EJECT && !manual && lastIntakePower > 0
+                && Math.abs(intakeVelocity) < JAM_VELOCITY;
+        if (!stalled) {
+            stallTimer.reset();
+        } else if (stallTimer.seconds() >= JAM_DETECT_SEC) {
+            jamEjecting = true;
+            ejectTimer.reset();
+        }
     }
 
     /** True while a ball is being pushed back off the beam break (never during manual). */
@@ -121,6 +162,8 @@ public class Feeder {
     public boolean isBeamBroken()   { return beamBroken; }
     public boolean isManual()       { return manual; }
     public boolean isVolleyActive() { return volley; }
+    public boolean isJamEjecting()  { return jamEjecting; }
+    public double getIntakeVelocity() { return intakeVelocity; }
 
     public void stop() {
         intake.setPower(0);

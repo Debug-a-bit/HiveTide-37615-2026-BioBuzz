@@ -33,7 +33,7 @@ public class Shooter {
     public static final double TICKS_PER_REV = 28;
 
     // ---- Controller (live-tunable in FTC Dashboard) ----
-    public static double kS = 0.7440;      // volts needed just to start turning
+    private final static double kS = 0.7440;      // volts needed just to start turning
     public static double kV = 0.002092;   // volts per RPM, measured automatically
     public static double kP = 0.05;       // volts per RPM of error
 

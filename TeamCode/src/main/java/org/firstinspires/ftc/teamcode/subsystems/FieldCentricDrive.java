@@ -148,13 +148,6 @@ public class FieldCentricDrive {
         imu.resetYaw();
     }
 
-    /** Encoder positions (FL, BL, FR, BR), + = that wheel driving the robot forward. */
-    public int[] getWheelPositions() {
-        return new int[]{
-                frontLeft.getCurrentPosition(), backLeft.getCurrentPosition(),
-                frontRight.getCurrentPosition(), backRight.getCurrentPosition() };
-    }
-
     public double getHeadingDegrees() {
         return Math.toDegrees(headingRad);
     }

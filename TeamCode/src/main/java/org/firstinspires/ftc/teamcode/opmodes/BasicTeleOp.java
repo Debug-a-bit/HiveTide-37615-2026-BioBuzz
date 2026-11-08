@@ -6,8 +6,10 @@ import com.acmerobotics.dashboard.telemetry.MultipleTelemetry;
 import com.qualcomm.hardware.lynx.LynxModule;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
+import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.util.ElapsedTime;
 
+import org.firstinspires.ftc.robotcore.external.navigation.CurrentUnit;
 import org.firstinspires.ftc.teamcode.subsystems.AutoAim;
 import org.firstinspires.ftc.teamcode.subsystems.FieldCentricDrive;
 import org.firstinspires.ftc.teamcode.subsystems.Feeder;
@@ -18,6 +20,8 @@ import org.firstinspires.ftc.teamcode.subsystems.ThriftyCamera;
 import org.firstinspires.ftc.teamcode.util.DataLogger;
 import org.firstinspires.ftc.teamcode.util.VoltageMonitor;
 
+import java.util.List;
+
 /**
  * During init: X = blue alliance, B = red alliance (picks which goal to aim at).
  *
@@ -27,9 +31,9 @@ import org.firstinspires.ftc.teamcode.util.VoltageMonitor;
  *   D-pad up        hold to turn to HIVE_TILT_HEADING_DEG (sticks still drive / strafe)
  *   Options         reset heading ("forward" = way the robot faces now)
  *   Right bumper    hold to shoot: auto-aim at the goal, spin up, then auto-feed all balls once at speed and aimed.
- *                   Aims from the robot's tracked field position, so the goal only has to be seen
- *                   once (within Localizer.POSE_TIMEOUT_SEC); it doesn't have to stay in view.
- *   Left bumper     hold to spin up only (no auto-feed)
+ *                   Only aims while the camera can see the goal.
+ *   Left bumper     hold to shoot without auto-aim: spin up, then auto-feed all balls once at speed
+ *                   (the driver aims with the right stick).
  *   Y               reverse intake and indexer (without clearing magfull)
  *   Right trigger   manual intake feed
  *   Left trigger    eject (reverse intake and clear mag full)
@@ -53,6 +57,15 @@ public class BasicTeleOp extends LinearOpMode {
     public static boolean LOG_TO_FILE = false;
     /** Heading D-pad up turns to (degrees, + = counter-clockwise; 0 = the way the robot faced at heading reset). */
     public static double HIVE_TILT_HEADING_DEG = 0;
+    /**
+     * Show each motor's and hub's current draw (amps). Each reading is a slow hub request, so only one
+     * device is read per loop: every value refreshes once per (motors + hubs) loops.
+     */
+    public static boolean CURRENT_TELEMETRY = true;
+
+    private static final String[] CURRENT_MOTORS = {
+            "frontLeftMotor", "backLeftMotor", "frontRightMotor", "backRightMotor",
+            "leftShooterMotor", "rightShooterMotor", "intakeMotor", "indexerMotor" };
 
     @Override
     public void runOpMode() {
@@ -61,7 +74,8 @@ public class BasicTeleOp extends LinearOpMode {
         telemetry = new MultipleTelemetry(telemetry, dashboard.getTelemetry());
 
         // Read all motor/encoder values from each hub in one go per loop (much faster loops)
-        for (LynxModule hub : hardwareMap.getAll(LynxModule.class)) {
+        List<LynxModule> hubs = hardwareMap.getAll(LynxModule.class);
+        for (LynxModule hub : hubs) {
             hub.setBulkCachingMode(LynxModule.BulkCachingMode.AUTO);
         }
 
@@ -74,20 +88,29 @@ public class BasicTeleOp extends LinearOpMode {
         Localizer localizer     = new Localizer(camera);
         AutoAim aim             = new AutoAim(localizer);
 
+        // Same motor objects the subsystems use, only for reading current draw
+        DcMotorEx[] currentMotors = new DcMotorEx[CURRENT_MOTORS.length];
+        for (int i = 0; i < CURRENT_MOTORS.length; i++) {
+            currentMotors[i] = hardwareMap.get(DcMotorEx.class, CURRENT_MOTORS[i]);
+        }
+        double[] motorAmps = new double[currentMotors.length];
+        double[] hubAmps = new double[hubs.size()];
+        int nextCurrentRead = 0;
+
         DataLogger log = LOG_TO_FILE ? new DataLogger("teleop",
                 "targetRPM", "rawRPM", "filteredRPM", "shooterPower", "loadComp", "shotsFired",
                 "readyToFeed", "volleyActive", "beamBroken", "magazineFull", "jamEjecting", "intakeVelocity",
                 "sideServoDeg", "servoPowered", "batteryVoltage",
-                "tagCount", "goalSeen", "goalRangeCm", "goalBearingDeg", "goalYawDeg", "aiming", "aimErrorDeg", "loopMs") : null;
+                "tagCount", "goalSeen", "goalRangeCm", "visionGoalDistanceCm", "aiming", "aimErrorDeg", "loopMs") : null;
 
         // Pick alliance (which goal to aim at) until START is pressed
         while (opModeInInit()) {
-            if (gamepad1.x)      ThriftyCamera.TARGET_GOAL = ThriftyCamera.BLUE_GOAL;
-            else if (gamepad1.b) ThriftyCamera.TARGET_GOAL = ThriftyCamera.RED_GOAL;
+            if (gamepad1.x)      ThriftyCamera.ALLIANCE = ThriftyCamera.BLUE;
+            else if (gamepad1.b) ThriftyCamera.ALLIANCE = ThriftyCamera.RED;
 
             telemetry.addData("Status", "Initialized. Ready.");
             telemetry.addData("Camera", camera.isConnected() ? "connected" : "NOT FOUND (check config name)");
-            telemetry.addData("Aiming at", ThriftyCamera.TARGET_GOAL + "   (X = blue, B = red)");
+            telemetry.addData("Aiming at", ThriftyCamera.ALLIANCE + "   (X = blue, B = red)");
             telemetry.update();
         }
         if (isStopRequested()) return;
@@ -102,28 +125,26 @@ public class BasicTeleOp extends LinearOpMode {
         while (opModeIsActive()) {
             double batteryVoltage = battery.update();
 
-            boolean shooting = gamepad1.right_bumper;
-            boolean align = gamepad1.x;
+            boolean autoAimShot = gamepad1.right_bumper;
+            boolean shooting = autoAimShot || gamepad1.left_bumper;   // left bumper = same shot, no auto-aim
 
-            // ================= CAMERA, POSITION & AIM =================
+            // ================= CAMERA & AIM =================
             camera.update();
             double heading = drive.updateHeading();
             if (gamepad1.options) {
                 drive.resetHeading();
-                localizer.reset();   // the field frame turns with the heading, so the old pose is wrong
+                localizer.reset();   // the goal heading is in the IMU's frame, which just turned
             }
-            localizer.update(drive.getWheelPositions(), heading);
-            aim.update(shooting, heading);
+            localizer.update(heading);
+            // Balls going through (feeder state is from last loop): stop turning so the shots aren't knocked off
+            boolean firing = feeder.isVolleyActive() || (shooting && gamepad1.right_trigger_pressed);
+            aim.update(autoAimShot, heading, firing);
 
             // ================= DRIVE =================
             // Auto-aim at the goal wins; otherwise D-pad up turns to HIVE_TILT_HEADING_DEG; otherwise the stick
             boolean aligning = gamepad1.dpad_up && !aim.isAiming();
             if (aligning && !lastAligning) drive.resetAlign();   // fresh controller memory on each press
             lastAligning = aligning;
-
-            if (align) {
-                drive.alignWithHiveTilt(gamepad1.left_stick_x, gamepad1.left_stick_y, Math.toRadians(drive.getHeadingDegrees() + camera.getTargetBearing()));
-            }
 
             if (aim.isAiming()) {
                 drive.drive(gamepad1.left_stick_x, -gamepad1.left_stick_y, aim.getTurn());
@@ -135,19 +156,17 @@ public class BasicTeleOp extends LinearOpMode {
             }
 
             // ================= SHOOTER =================
-            boolean spinOnly = gamepad1.left_bumper;
-
-            if (shooting || spinOnly)       shooter.spinUp();
+            if (shooting)                   shooter.spinUp();
             else if (feeder.isBackingOff()) shooter.setOpenLoopPower(Feeder.SHOOTER_BACKOFF_POWER);  // help push a ball back off the beam
             else                            shooter.stop();
             // Push harder while balls are going through (feeder state is from last loop, ~1 loop behind)
-            shooter.setFeeding(feeder.isVolleyActive() || (shooting && gamepad1.right_trigger_pressed));
+            shooter.setFeeding(firing);
             shooter.update(batteryVoltage);
 
             // ================= INTAKE & INDEXER =================
             feeder.update(
                     shooting, // Currently shooting Variable
-                    shooting && shooter.isReadyToFeed() && aim.isReadyToShoot(), // Shooter revved up and aim settled on the goal.
+                    shooting && shooter.isReadyToFeed() && aim.isReadyToShoot(), // Shooter revved up and aim settled (always true when not auto-aiming).
                     gamepad1.left_trigger_pressed, // Eject Keybind
                     gamepad1.right_trigger_pressed, // Manual Intake Keybind
                     gamepad1.y); // Run intake and index backwards.
@@ -186,18 +205,40 @@ public class BasicTeleOp extends LinearOpMode {
             telemetry.addData("tagCount", camera.getTagCount());
             telemetry.addData("goalSeen", camera.hasTarget() ? 1 : 0);
             telemetry.addData("goalRange (cm)", camera.getTargetRange());
-            telemetry.addData("goalBearing (deg)", camera.getTargetBearing());
-            telemetry.addData("goalYaw (deg)", camera.getTargetYaw());
-            telemetry.addData("poseValid", localizer.hasPose() ? 1 : 0);
-            telemetry.addData("poseX (cm)", localizer.getX());
-            telemetry.addData("poseY (cm)", localizer.getY());
-            telemetry.addData("goalDistance (cm)", localizer.getGoalDistance());
-            telemetry.addData("odoX (cm)", localizer.getOdoX());
-            telemetry.addData("odoY (cm)", localizer.getOdoY());
+            telemetry.addData("tagHeight (cm)", camera.getTagHeight());
+            telemetry.addData("cameraTilt (deg)", camera.getCameraTiltDeg());
+            telemetry.addData("visionGoalDistance (cm)", localizer.getVisionGoalDistance());
             telemetry.addData("aiming", aim.isAiming() ? 1 : 0);
             telemetry.addData("aimed", aim.isAimed() ? 1 : 0);
             telemetry.addData("aimReady", aim.isReadyToShoot() ? 1 : 0);
+            telemetry.addData("aimHolding", aim.isHolding() ? 1 : 0);
             telemetry.addData("aimError (deg)", aim.getErrorDeg());
+
+            // ================= CURRENT DRAW =================
+            if (CURRENT_TELEMETRY) {
+                // One device per loop (round-robin): motors first, then hubs
+                if (nextCurrentRead < currentMotors.length) {
+                    motorAmps[nextCurrentRead] = currentMotors[nextCurrentRead].getCurrent(CurrentUnit.AMPS);
+                } else {
+                    hubAmps[nextCurrentRead - currentMotors.length] =
+                            hubs.get(nextCurrentRead - currentMotors.length).getCurrent(CurrentUnit.AMPS);
+                }
+                nextCurrentRead = (nextCurrentRead + 1) % (currentMotors.length + hubs.size());
+
+                double motorTotal = 0, hubTotal = 0;
+                for (int i = 0; i < currentMotors.length; i++) {
+                    telemetry.addData(CURRENT_MOTORS[i] + " (A)", motorAmps[i]);
+                    motorTotal += motorAmps[i];
+                }
+                for (int i = 0; i < hubs.size(); i++) {
+                    String hubName = hubs.get(i).isParent() ? "controlHub" : "expansionHub" + i;
+                    telemetry.addData(hubName + " (A)", hubAmps[i]);
+                    hubTotal += hubAmps[i];
+                }
+                // Hub readings are the whole hub's draw, so what's left over is servos, camera and electronics
+                telemetry.addData("totalCurrent (A)", hubTotal);
+                telemetry.addData("otherCurrent (A)", hubTotal - motorTotal);
+            }
             double loopMs = loopTimer.milliseconds();
             telemetry.addData("loopMs", loopMs);
             loopTimer.reset();
@@ -210,7 +251,7 @@ public class BasicTeleOp extends LinearOpMode {
                         feeder.isJamEjecting() ? 1 : 0, feeder.getIntakeVelocity(),
                         sideServos.getAngle(), sideServos.isPowered() ? 1 : 0,
                         batteryVoltage, camera.getTagCount(), camera.hasTarget() ? 1 : 0,
-                        camera.getTargetRange(), camera.getTargetBearing(), camera.getTargetYaw(),
+                        camera.getTargetRange(), localizer.getVisionGoalDistance(),
                         aim.isAiming() ? 1 : 0, aim.getErrorDeg(), loopMs);
             }
             telemetry.update();

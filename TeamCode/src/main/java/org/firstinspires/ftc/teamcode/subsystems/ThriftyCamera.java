@@ -6,11 +6,13 @@ import android.util.Size;
 import com.acmerobotics.dashboard.FtcDashboard;
 import com.acmerobotics.dashboard.config.Config;
 import com.qualcomm.robotcore.hardware.HardwareMap;
+import com.qualcomm.robotcore.util.Range;
 import com.qualcomm.robotcore.util.RobotLog;
 
 import org.firstinspires.ftc.robotcore.external.hardware.camera.WebcamName;
 import org.firstinspires.ftc.robotcore.external.hardware.camera.controls.ExposureControl;
 import org.firstinspires.ftc.robotcore.external.hardware.camera.controls.GainControl;
+import org.firstinspires.ftc.robotcore.external.matrices.MatrixF;
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
 import org.firstinspires.ftc.robotcore.internal.camera.calibration.CameraCalibration;
@@ -37,8 +39,14 @@ import java.util.concurrent.TimeUnit;
  * If it isn't configured or plugged in, the rest of the robot still runs:
  * isConnected() is false and every getter returns "no tag".
  *
- * Each goal is a cluster of 4 tags (RED SCORING = IDs 30-33, BLUE SCORING = 42-45).
- * The SDK solves the cluster as one target, so the "target" here is the TARGET_GOAL cluster.
+ * BIOBUZZ goal: each alliance's HIVE has two CELLS; the upward-facing one is the one to score in.
+ * Each CELL has a cluster of 4 tags on its BOTTOM, lying flat and facing the floor (red: 30-33 and
+ * 34-37, blue: 38-41 and 42-45). Only the upward-facing CELL's tags can be seen from the floor, so
+ * the target is whichever of our alliance's clusters is in view. The SDK solves each cluster as one
+ * target.
+ *
+ * Because the tags lie flat, their tilt in the image gives the true vertical. That is used to work out
+ * where the goal is across the floor, whatever angle the camera is pitched or rolled at.
  *
  * The live camera image is sent to FTC Dashboard (Camera view) with tag outlines drawn on it.
  *
@@ -48,27 +56,32 @@ import java.util.concurrent.TimeUnit;
 @Config
 public class ThriftyCamera {
 
-    public static String CAMERA_NAME = "Webcam 1";
-    public static int RESOLUTION_WIDTH  = 640;
-    public static int RESOLUTION_HEIGHT = 480;
-    public static double DASHBOARD_FPS  = 10;   // 0 = don't stream to Dashboard (saves Wi-Fi)
+    private final static String CAMERA_NAME = "Webcam 1";
+    private final static int RESOLUTION_WIDTH  = 640;
+    private final static int RESOLUTION_HEIGHT = 480;
+    public static double DASHBOARD_FPS  = 1;   // 0 = don't stream to Dashboard (saves Wi-Fi)
+    /**
+     * True = camera is mounted upside down (image rotated 180°): flips the sign of bearing, yaw and the
+     * fallback left/right. The floor position (used for aiming) works out which way is up from the tags.
+     */
+    private final static boolean UPSIDE_DOWN = true;
 
-    public static final String RED_GOAL  = "RED SCORING";
-    public static final String BLUE_GOAL = "BLUE SCORING";
-    /** Tag cluster to target (set from the alliance picked at init). */
-    public static String TARGET_GOAL = BLUE_GOAL;
+    public static final String RED  = "RED";
+    public static final String BLUE = "BLUE";
+    /** Alliance whose CELLS to target (set at init). Matches any cluster whose name starts with it. */
+    public static String ALLIANCE = BLUE;
 
     /** Higher = faster processing but shorter detection range (1 to 3 is typical). */
     public static float DECIMATION = 2;
 
     // ---- Manual exposure: short exposure = less motion blur while driving. 0 = auto ----
-    public static int EXPOSURE_MS = 0;
-    public static int GAIN = 250;
+    public static int EXPOSURE_MS = 1;
+    public static int GAIN = 1;   // this camera accepts 0 to 4; each step is big (4 washes the image out)
 
     // ---- Lens calibration (pixels, for RESOLUTION_WIDTH x RESOLUTION_HEIGHT) ----
-    public static double FX = 548.3391729, FY = 548.1896237, CX = 330.2344345, CY = 271.3700637;
+    private final static double FX = 548.3391729, FY = 548.1896237, CX = 330.2344345, CY = 271.3700637;
     // Distortion, OpenCV 8-coefficient rational model (k1, k2, p1, p2, k3, k4, k5, k6). All 0 = no undistortion.
-    public static double K1 = -0.01651677248, K2 = -0.03461525769, P1 = -0.0002241824697, P2 = 0.0002172363125, K3 = 0.03839363111, K4 = 0.0008629032551, K5 = 0.001556644143, K6 = -0.001602928766;
+    private final static double K1 = -0.01651677248, K2 = -0.03461525769, P1 = -0.0002241824697, P2 = 0.0002172363125, K3 = 0.03839363111, K4 = 0.0008629032551, K5 = 0.001556644143, K6 = -0.001602928766;
 
     private VisionPortal portal;
     private AprilTagProcessor aprilTag;
@@ -78,6 +91,9 @@ public class ThriftyCamera {
     private List<AprilTagDetection> detections = new ArrayList<>();
     private AprilTagClusterDetection target = null;
     private boolean newTarget = false;
+
+    // Goal position across the floor (cm), from computeFloorPosition()
+    private double floorForward = 0, floorRight = 0, tagHeight = 0, cameraTiltDeg = 0;
 
     public ThriftyCamera(HardwareMap hardwareMap) {
         WebcamName webcam;
@@ -129,22 +145,68 @@ public class ThriftyCamera {
         if (fresh == null) return;   // no new frame since last loop: keep the last result
         detections = fresh;
 
+        // Either of our CELLS (only the upward-facing one's tags are visible); the nearest if both are
         target = null;
         for (AprilTagDetection detection : detections) {
             if (!(detection instanceof AprilTagClusterDetection)) continue;
             AprilTagClusterDetection cluster = (AprilTagClusterDetection) detection;
-            if (cluster.metadata != null && cluster.ftcPose != null && TARGET_GOAL.equals(cluster.metadata.name)) {
-                target = cluster;
-            }
+            if (cluster.metadata == null || cluster.ftcPose == null || !cluster.metadata.name.startsWith(ALLIANCE)) continue;
+            if (target == null || cluster.ftcPose.range < target.ftcPose.range) target = cluster;
         }
         newTarget = target != null;
+        if (target != null) computeFloorPosition();
     }
 
+    /**
+     * The tags lie flat facing the floor, so the line straight out of them is the true vertical.
+     * Taking that out of the camera's reading leaves where the goal is across the floor, so camera
+     * pitch (it looks up at the tags) and roll (including being mounted upside down) don't skew the
+     * distance or the aim.
+     */
+    private void computeFloorPosition() {
+        // Camera axes (as ftcPose): x = image right, y = straight out of the lens, z = image up
+        double tx = target.ftcPose.x, ty = target.ftcPose.y, tz = target.ftcPose.z;
+        floorForward  = ty;         // fallbacks: the plain camera reading
+        floorRight    = flip(tx);
+        tagHeight     = 0;
+        cameraTiltDeg = 0;
+        if (target.rawPose == null || target.rawPose.R == null) return;
+
+        // Tag normal (the R matrix's 3rd column, raw axes x right / y down / z out of the lens) = vertical
+        MatrixF r = target.rawPose.R;
+        double ux = r.get(0, 2), uy = r.get(2, 2), uz = -r.get(1, 2);
+        double length = Math.sqrt(ux * ux + uy * uy + uz * uz);
+        if (length < 1e-6) return;
+        ux /= length; uy /= length; uz /= length;
+        double height = tx * ux + ty * uy + tz * uz;   // camera-to-tag-plane distance = height of the tags
+        if (height < 0) { ux = -ux; uy = -uy; uz = -uz; height = -height; }   // point up, toward the tags
+
+        // Lens direction levelled onto the floor (camera pointing near straight up: can't level it)
+        double fx = -uy * ux, fy = 1 - uy * uy, fz = -uy * uz;
+        double fLength = Math.sqrt(fx * fx + fy * fy + fz * fz);
+        if (fLength < 0.3) return;
+        fx /= fLength; fy /= fLength; fz /= fLength;
+        // The camera's real right across the floor: levelled lens direction x up. Taken from the true
+        // vertical, so it's right whichever way up the camera is mounted (no UPSIDE_DOWN needed)
+        double rx = fy * uz - fz * uy, ry = fz * ux - fx * uz, rz = fx * uy - fy * ux;
+
+        double hx = tx - height * ux, hy = ty - height * uy, hz = tz - height * uz;   // goal, flattened to the floor
+        floorForward  = hx * fx + hy * fy + hz * fz;
+        floorRight    = hx * rx + hy * ry + hz * rz;
+        tagHeight     = height;
+        cameraTiltDeg = Math.toDegrees(Math.asin(Range.clip(uy, -1, 1)));
+    }
+
+    /** Always sets both: the camera keeps its last exposure and gain between runs, even across OpModes. */
     private void applyExposure() {
-        if (EXPOSURE_MS <= 0) return;
         ExposureControl exposure = portal.getCameraControl(ExposureControl.class);
-        if (exposure.getMode() != ExposureControl.Mode.Manual) exposure.setMode(ExposureControl.Mode.Manual);
-        exposure.setExposure(EXPOSURE_MS, TimeUnit.MILLISECONDS);
+        if (EXPOSURE_MS <= 0) {
+            // This camera has no plain "Auto"; AperturePriority is its auto-exposure
+            exposure.setMode(ExposureControl.Mode.AperturePriority);
+        } else {
+            if (exposure.getMode() != ExposureControl.Mode.Manual) exposure.setMode(ExposureControl.Mode.Manual);
+            exposure.setExposure(EXPOSURE_MS, TimeUnit.MILLISECONDS);
+        }
         portal.getCameraControl(GainControl.class).setGain(GAIN);
     }
 
@@ -158,16 +220,25 @@ public class ThriftyCamera {
     /** Straight-line distance from the camera lens to the goal (cm). */
     public double getTargetRange()   { return target != null ? target.ftcPose.range : 0; }
     /** How far to turn to face the goal (degrees, + = goal is to the left). */
-    public double getTargetBearing() { return target != null ? target.ftcPose.bearing : 0; }
+    public double getTargetBearing() { return target != null ? flip(target.ftcPose.bearing) : 0; }
     /** How far the goal is rotated from facing the camera square-on (degrees). */
-    public double getTargetYaw()     { return target != null ? target.ftcPose.yaw : 0; }
+    public double getTargetYaw()     { return target != null ? flip(target.ftcPose.yaw) : 0; }
     /** Distance straight ahead of the camera to the goal (cm), ignoring sideways offset. */
     public double getTargetForward() { return target != null ? target.ftcPose.y : 0; }
-    /** Distance to the right of the camera to the goal (cm). */
-    public double getTargetRight()   { return target != null ? target.ftcPose.x : 0; }
+    /** Goal ahead of the camera measured across the floor (cm): pitch and roll taken out. */
+    public double getGoalFloorForward() { return target != null ? floorForward : 0; }
+    /** Goal to the right of the camera measured across the floor (cm). */
+    public double getGoalFloorRight()   { return target != null ? floorRight : 0; }
+    /** How far the tags are above the camera lens (cm); check against a tape measure. */
+    public double getTagHeight()        { return target != null ? tagHeight : 0; }
+    /** How far the lens is tipped up toward the tags (degrees), worked out from the tags. */
+    public double getCameraTiltDeg()    { return target != null ? cameraTiltDeg : 0; }
     /** Horizontal focal length (pixels) the AprilTag maths is using; 0 if no camera. */
     public double getFocalPx()       { return focalPx; }
     public double getFps()           { return portal != null ? portal.getFps() : 0; }
+
+    /** A 180° camera mounting mirrors left/right, so sideways values and turn angles change sign. */
+    private static double flip(double value) { return UPSIDE_DOWN ? -value : value; }
 
     /** Everything seen in the latest frame (single tags and clusters). */
     public List<AprilTagDetection> getDetections() { return detections; }

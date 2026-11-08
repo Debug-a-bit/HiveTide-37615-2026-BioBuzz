@@ -45,7 +45,7 @@ import java.util.List;
  * (pull with: adb pull /sdcard/FIRST/logs).
  */
 @Config
-@Autonomous(name = "Auto", group = "Testing")
+@Autonomous(name = "AutoTest", group = "Testing")
 public class AutoTest extends LinearOpMode {
 
     /** How often (ms) the Dashboard graph gets a new point. Lower = smoother graph, more Wi-Fi traffic. */
@@ -126,11 +126,11 @@ public class AutoTest extends LinearOpMode {
         while (opModeIsActive()) {
 
             ElapsedTime autoTimer = new ElapsedTime();
-            double autoTimerAdjust = 1.0;
+            double autoTimerAdjust = 0.5;
 
             //drive forwards
             while (autoTimer.seconds() <= autoTimerAdjust) {
-            drive.drive(1,0,0);
+            drive.drive(0,0.5,0);
             }
 
 
@@ -140,5 +140,6 @@ public class AutoTest extends LinearOpMode {
         feeder.stop();
         camera.close();
         if (log != null) log.close();
+        break;
     }
 }}

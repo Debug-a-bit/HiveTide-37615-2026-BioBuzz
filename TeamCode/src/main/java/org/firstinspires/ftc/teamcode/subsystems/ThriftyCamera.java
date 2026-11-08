@@ -69,7 +69,7 @@ public class ThriftyCamera {
     public static final String RED  = "RED";
     public static final String BLUE = "BLUE";
     /** Alliance whose CELLS to target (set at init). Matches any cluster whose name starts with it. */
-    public static String ALLIANCE = BLUE;
+    public static String ALLIANCE = RED;
 
     /** Higher = faster processing but shorter detection range (1 to 3 is typical). */
     public static float DECIMATION = 2;

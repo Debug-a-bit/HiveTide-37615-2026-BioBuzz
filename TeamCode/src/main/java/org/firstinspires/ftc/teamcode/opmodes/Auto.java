@@ -50,6 +50,14 @@ import java.util.List;
 @Autonomous(name = "Auto", group = "Testing")
 public class Auto extends LinearOpMode {
 
+    public static double REST_TO_SHOOT_X = 1.5;
+    public static double REST_TO_SHOOT_Y = 1.1;
+    public static double PAUSE = 1.0;
+    public static double CAMERA_AIM = 1.0;
+    public static double SHOOT_TIMEOUT = 3.0;
+    public static double SHOOT_TO_FORWARD = 1.0;
+
+    public static double MOVEMENT_SPEED = 0.6;
     /** How often (ms) the Dashboard graph gets a new point. Lower = smoother graph, more Wi-Fi traffic. */
     public static int DASHBOARD_INTERVAL_MS = 20;
     /** How long (ms) the controller rumbles when the magazine fills. 0 = off. */
@@ -128,21 +136,28 @@ public class Auto extends LinearOpMode {
         while (opModeIsActive()) {
 
             ElapsedTime autoTimer = new ElapsedTime();
-            double autoTimerAdjust = 1.0;
+            double autoTimerAdjust = autoTimer.seconds() + REST_TO_SHOOT_X;
 
-            //drive backwards
+            //drive forwards
             while (autoTimer.seconds() <= autoTimerAdjust) {
-            drive.drive(-1,0,0);
+            drive.drive(0,MOVEMENT_SPEED,0);
+            }
+            drive.drive(0,0,0);
+
+            autoTimerAdjust = autoTimer.seconds() + PAUSE; //to account for errors
+            while (autoTimer.seconds() <= autoTimerAdjust) {
             }
 
-            //Strafe right
-            autoTimerAdjust = autoTimer.seconds() + 0.5; //to account for errors
+            //Strafe left
+            autoTimerAdjust = autoTimer.seconds() + REST_TO_SHOOT_Y; //to account for errors
             while (autoTimer.seconds() <= autoTimerAdjust) {
-                drive.drive(0,1,0);
+                drive.drive(-MOVEMENT_SPEED,0,0);
             }
+            drive.drive(0,0,0);
+
 
             //autoAim
-            autoTimerAdjust = autoTimer.seconds() + 1.0;
+            autoTimerAdjust = autoTimer.seconds() + CAMERA_AIM;
             while (autoTimer.seconds() <= autoTimerAdjust) {
                 camera.update();
 
@@ -152,7 +167,7 @@ public class Auto extends LinearOpMode {
             }
 
             //Shoot
-            autoTimerAdjust = autoTimer.seconds() + 3.0; //to account for errors
+            autoTimerAdjust = autoTimer.seconds() + SHOOT_TIMEOUT; //to account for errors
             while (shooter.getShotsFired() < 4 && autoTimer.seconds() <= autoTimerAdjust) {
                 shooter.spinUp();
                 shooter.setFeeding(feeder.isVolleyActive());
@@ -166,11 +181,11 @@ public class Auto extends LinearOpMode {
             }
             // Drive forwards
 
-            sideServos.goToB();
+            sideServos.goToA();
 
-            autoTimerAdjust = autoTimer.seconds() + 1.5;
+            autoTimerAdjust = autoTimer.seconds() + SHOOT_TO_FORWARD;
             while (autoTimer.seconds() <= autoTimerAdjust) {
-                drive.drive(1,0,0);
+                drive.drive(0,-MOVEMENT_SPEED,0);
             }
 
         drive.stop();
@@ -179,5 +194,6 @@ public class Auto extends LinearOpMode {
         feeder.stop();
         camera.close();
         if (log != null) log.close();
+        break;
     }
 }}

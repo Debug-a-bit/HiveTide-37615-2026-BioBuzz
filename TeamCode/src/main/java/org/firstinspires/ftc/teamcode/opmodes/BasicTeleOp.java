@@ -1,12 +1,14 @@
 package org.firstinspires.ftc.teamcode.opmodes;
 
 import com.acmerobotics.dashboard.FtcDashboard;
+import com.acmerobotics.dashboard.config.Config;
 import com.acmerobotics.dashboard.telemetry.MultipleTelemetry;
 import com.qualcomm.hardware.lynx.LynxModule;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.util.ElapsedTime;
 
+import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.teamcode.subsystems.FieldCentricDrive;
 import org.firstinspires.ftc.teamcode.subsystems.Feeder;
 import org.firstinspires.ftc.teamcode.subsystems.Shooter;
@@ -26,8 +28,12 @@ import org.firstinspires.ftc.teamcode.util.VoltageMonitor;
  *   A               side servos to angle A
  *   B               side servos to angle B
  */
+
+@Config
 @TeleOp(name = "BasicTeleop", group = "Testing")
 public class BasicTeleOp extends LinearOpMode {
+
+    public static boolean rightCellTilted = true;
 
     @Override
     public void runOpMode() {
@@ -54,7 +60,6 @@ public class BasicTeleOp extends LinearOpMode {
 
         ElapsedTime loopTimer = new ElapsedTime();
 
-        boolean rightCellTilted = true;
         String cellTilted = null;
         double targetHeading = 0.0;   // radians
 
@@ -65,25 +70,22 @@ public class BasicTeleOp extends LinearOpMode {
             if (gamepad1.options) drive.resetHeading();
 
 // Driver 2 flips which hive cell is tilted
-            if (gamepad2.rightBumperWasReleased()) {
+            if (gamepad1.y) {
                 rightCellTilted = !rightCellTilted;
             }
             cellTilted = rightCellTilted ? "RIGHT" : "LEFT";
 
-// On the press only: reset the controller and lock the target
-            if (gamepad1.xWasPressed()) {
-                drive.resetAlign();
-                targetHeading = Math.toRadians(rightCellTilted ? -90 : 90);
-            }
-
             double x = gamepad1.left_stick_x;
             double y = -gamepad1.left_stick_y;
-
-            if (gamepad1.x) {                            // held
+// On the press only: reset the controller and lock the target
+            if (gamepad1.x) {
+                drive.resetAlign();
+                targetHeading = Math.toRadians(rightCellTilted ? -90 : 90);
                 drive.alignWithHiveTilt(x, y, targetHeading);
             } else {
                 drive.drive(x, y, gamepad1.right_stick_x);
             }
+
 
             // ================= SHOOTER =================
             boolean shooting = gamepad1.right_bumper;
@@ -121,6 +123,7 @@ public class BasicTeleOp extends LinearOpMode {
             telemetry.addData("loopMs", loopTimer.milliseconds());
             telemetry.addData("Cell tilted", cellTilted);
             telemetry.addData("Target (deg)", Math.toDegrees(targetHeading));
+            telemetry.addData("Current angle", drive.getHeadingDegrees());
             telemetry.addData("Align error (deg)", drive.getAlignErrorDegrees());
             loopTimer.reset();
             telemetry.update();

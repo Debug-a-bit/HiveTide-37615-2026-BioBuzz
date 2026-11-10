@@ -107,13 +107,16 @@ public class BasicTeleOp extends LinearOpMode {
         while (opModeInInit()) {
             if (gamepad1.x)      ThriftyCamera.ALLIANCE = ThriftyCamera.BLUE;
             else if (gamepad1.b) ThriftyCamera.ALLIANCE = ThriftyCamera.RED;
+            camera.update();   // auto brightness tunes while waiting
 
             telemetry.addData("Status", "Initialized. Ready.");
             telemetry.addData("Camera", camera.isConnected() ? "connected" : "NOT FOUND (check config name)");
+            telemetry.addData("Brightness", camera.getBrightnessStatus());
             telemetry.addData("Aiming at", ThriftyCamera.ALLIANCE + "   (X = blue, B = red)");
             telemetry.update();
         }
         if (isStopRequested()) return;
+        camera.lockBrightness();
 
         sideServos.goToB();   // servos don't move until first commanded
 
@@ -169,7 +172,8 @@ public class BasicTeleOp extends LinearOpMode {
                     shooting && shooter.isReadyToFeed() && aim.isReadyToShoot(), // Shooter revved up and aim settled (always true when not auto-aiming).
                     gamepad1.left_trigger_pressed, // Eject Keybind
                     gamepad1.right_trigger_pressed, // Manual Intake Keybind
-                    gamepad1.y); // Run intake and index backwards.
+                    gamepad1.y, // Run intake and index backwards.
+                    false); // No magazine override in TeleOp
 
             // Rumble once when the magazine becomes full
             if (feeder.isMagazineFull() && !lastMagazineFull && FULL_RUMBLE_MS > 0) gamepad1.rumble(FULL_RUMBLE_MS);
@@ -202,6 +206,7 @@ public class BasicTeleOp extends LinearOpMode {
             telemetry.addData("servoPowered", sideServos.isPowered() ? 1 : 0);
             telemetry.addData("batteryVoltage", batteryVoltage);
             telemetry.addData("cameraFps", camera.getFps());
+            telemetry.addData("cameraBrightness", camera.getBrightness());
             telemetry.addData("tagCount", camera.getTagCount());
             telemetry.addData("goalSeen", camera.hasTarget() ? 1 : 0);
             telemetry.addData("goalRange (cm)", camera.getTargetRange());

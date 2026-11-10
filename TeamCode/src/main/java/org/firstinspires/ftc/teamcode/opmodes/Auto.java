@@ -1,80 +1,100 @@
 package org.firstinspires.ftc.teamcode.opmodes;
 
+import static org.firstinspires.ftc.teamcode.auto.AutoActions.Direction.BACKWARD;
+import static org.firstinspires.ftc.teamcode.auto.AutoActions.Direction.FORWARD;
+import static org.firstinspires.ftc.teamcode.auto.AutoActions.Direction.LEFT;
+import static org.firstinspires.ftc.teamcode.auto.AutoActions.Direction.RIGHT;
+import static org.firstinspires.ftc.teamcode.auto.AutoActions.INTAKE_OFF;
+import static org.firstinspires.ftc.teamcode.auto.AutoActions.INTAKE_ON;
+
 import com.acmerobotics.dashboard.FtcDashboard;
 import com.acmerobotics.dashboard.config.Config;
 import com.acmerobotics.dashboard.telemetry.MultipleTelemetry;
-import com.qualcomm.hardware.lynx.LynxModule;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
-import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
-import com.qualcomm.robotcore.hardware.DcMotorEx;
-import com.qualcomm.robotcore.util.ElapsedTime;
 
-import org.firstinspires.ftc.robotcore.external.navigation.CurrentUnit;
-import org.firstinspires.ftc.teamcode.subsystems.AutoAim;
-import org.firstinspires.ftc.teamcode.subsystems.FieldCentricDrive;
-import org.firstinspires.ftc.teamcode.subsystems.Feeder;
-import org.firstinspires.ftc.teamcode.subsystems.Localizer;
-import org.firstinspires.ftc.teamcode.subsystems.Shooter;
-import org.firstinspires.ftc.teamcode.subsystems.SideServos;
+import org.firstinspires.ftc.teamcode.auto.AutoActions;
 import org.firstinspires.ftc.teamcode.subsystems.ThriftyCamera;
-import org.firstinspires.ftc.teamcode.util.DataLogger;
-import org.firstinspires.ftc.teamcode.util.VoltageMonitor;
-
-import java.util.List;
 
 /**
  * During init: X = blue alliance, B = red alliance (picks which goal to aim at).
  *
- * Controls (gamepad 1)
- *   Left stick      drive / strafe (field-centric)
- *   Right stick X   turn (ignored while auto-aim is turning toward the goal, or D-pad up is held)
- *   D-pad up        hold to turn to HIVE_TILT_HEADING_DEG (sticks still drive / strafe)
- *   Options         reset heading ("forward" = way the robot faces now)
- *   Right bumper    hold to shoot: auto-aim at the goal, spin up, then auto-feed all balls once at speed and aimed.
- *                   Only aims while the camera can see the goal.
- *   Left bumper     hold to shoot without auto-aim: spin up, then auto-feed all balls once at speed
- *                   (the driver aims with the right stick).
- *   Y               reverse intake and indexer (without clearing magfull)
- *   Right trigger   manual intake feed
- *   Left trigger    eject (reverse intake and clear mag full)
- *   A               side servos to angle A
- *   B               side servos to angle B
+ * Starts preloaded in front of the goal:
+ *   1. Aim at the goal and shoot the preloaded balls.
+ *   2. Turn PICKUP_TURN_DEG and drive backward with the intake on, wiggling to pull the last balls in.
+ *   3. Straighten up, drive back to the shooting spot, turning another PICKUP_TURN_DEG on the way.
+ *   4. Aim and shoot again, then move off.
  *
- * The controller rumbles when the magazine becomes full.
+ * Moves are timed and field-centric: "forward" etc. stay the same field direction whichever way the
+ * robot is facing. Directions are relative to how the robot sits at START.
+ * The actions themselves live in AutoActions, so other autos can reuse them.
  *
- * Every loop is also written to /sdcard/FIRST/logs/teleop_<date>_<time>.csv
- * (pull with: adb pull /sdcard/FIRST/logs).
+ * Naming: *_DIST values are distances, measured in seconds of driving at MOVEMENT_SPEED (a slower move
+ * covers the same distance, it just takes longer). *_TIME and *_TIMEOUT values are real seconds that an
+ * action (pausing, aiming, shooting, turning) takes or is allowed to take.
  */
 @Config
 @Autonomous(name = "Auto", group = "Testing")
 public class Auto extends LinearOpMode {
 
-    public static double REST_TO_SHOOT_X = 1.5;
-    public static double REST_TO_SHOOT_Y = 1.1;
-    public static double PAUSE = 1.0;
-    public static double CAMERA_AIM = 1.0;
-    public static double SHOOT_TIMEOUT = 3.0;
-    public static double SHOOT_TO_FORWARD = 1.0;
+    // ---- Distances (seconds of driving at MOVEMENT_SPEED) ----
+    /** Left, away from the shooting spot before the first pickup turn. */
+    public static double LEAVE_SHOOT_LEFT_DIST = 0.2;
+    /** Right, lining up with the balls after the first pickup turn. */
+    public static double PICKUP_LINEUP_RIGHT_DIST = 0.5;
+    /** Backward into the balls with the intake on; the return forward undoes it. */
+    public static double PICKUP_DEPTH_DIST = 1.25;
+    /** How much of PICKUP_DEPTH_DIST is driven at MOVEMENT_SPEED; the rest is at INTAKE_MOVEMENT_SPEED. */
+    public static double PICKUP_FAST_PART_DIST = 0.52;
+    /** Short move forward out of the pickup before straightening up. */
+    public static double PICKUP_EXIT_FORWARD_DIST = 0.4;
+    /** Left, from the pickup back across to the shooting spot. */
+    public static double RETURN_LEFT_DIST = 2.8;
+    /** How far the robot drives after the pickup pause with the intake still running (the exit forward, then the start of the return). */
+    public static double INTAKE_AFTER_PAUSE_DIST = 2.0;
+    /** Small move left at the shooting spot, just before aiming for the final volley. */
+    public static double FINAL_LEFT_DIST = 0.15;
+    /** After the final volley: right, then backward. */
+    public static double END_RIGHT_DIST = 0.15;
+    public static double END_BACK_DIST = 1.25;
+    /** Each wiggle push, at WIGGLE_SPEED. */
+    public static double WIGGLE_EACH_WAY_DIST = 0.1;
+    /** After the wiggle: right, then backward into the wall to square up, at WALL_ALIGN_SPEED. */
+    public static double WALL_ALIGN_RIGHT_DIST = 0.15;
+    public static double WALL_ALIGN_BACK_DIST = 0.15;
 
+    // ---- Intake actions ----
+    /** Seconds stopped with the intake on after the wiggle. */
+    public static double PICKUP_PAUSE_TIME = 1.5;
+    public static int WIGGLE_COUNT = 3;
+    /** Seconds stopped (intake still on) at each change of direction: slows the wiggle without weakening each push. */
+    public static double WIGGLE_PAUSE_TIME = 0.25;
+
+    // ---- Aiming, shooting and turning actions (seconds) ----
+    /** Time spent turning toward the goal before the first volley (starts roughly lined up). */
+    public static double FIRST_AIM_TIME = 1.0;
+    /** Time spent turning toward the goal before the second volley. */
+    public static double SECOND_AIM_TIME = 3.0;
+    /** Longest a volley may take (includes spinning up the flywheel). */
+    public static double SHOOT_TIMEOUT = 3.0;
+    /** Longest a turn may take if it can't get within FieldCentricDrive.ALIGN_TOLERANCE_DEG. */
+    public static double TURN_TIMEOUT = 1.5;
+    /** Size of each pickup turn (degrees, + = counter-clockwise). */
+    public static double PICKUP_TURN_DEG = -90;
+
+    // ---- Speeds (0 to 1) ----
     public static double MOVEMENT_SPEED = 0.6;
+    public static double INTAKE_MOVEMENT_SPEED = 0.25;
+    /** Power of each wiggle push. */
+    public static double WIGGLE_SPEED = 0.25;
+    /** Gentle, so squaring up against the wall doesn't bang into it. */
+    public static double WALL_ALIGN_SPEED = 0.4;
+    public static double SLOW_RIGHT_SPEED = 0.3;
+
     /** How often (ms) the Dashboard graph gets a new point. Lower = smoother graph, more Wi-Fi traffic. */
     public static int DASHBOARD_INTERVAL_MS = 20;
-    /** How long (ms) the controller rumbles when the magazine fills. 0 = off. */
-    public static int FULL_RUMBLE_MS = 400;
-    /** Save every loop to a CSV on the Control Hub. */
-    public static boolean LOG_TO_FILE = false;
-    /** Heading D-pad up turns to (degrees, + = counter-clockwise; 0 = the way the robot faced at heading reset). */
-    public static double HIVE_TILT_HEADING_DEG = 0;
-    /**
-     * Show each motor's and hub's current draw (amps). Each reading is a slow hub request, so only one
-     * device is read per loop: every value refreshes once per (motors + hubs) loops.
-     */
-    public static boolean CURRENT_TELEMETRY = true;
 
-    private static final String[] CURRENT_MOTORS = {
-            "frontLeftMotor", "backLeftMotor", "frontRightMotor", "backRightMotor",
-            "leftShooterMotor", "rightShooterMotor", "intakeMotor", "indexerMotor" };
+    private AutoActions robot;
 
     @Override
     public void runOpMode() {
@@ -82,118 +102,30 @@ public class Auto extends LinearOpMode {
         dashboard.setTelemetryTransmissionInterval(DASHBOARD_INTERVAL_MS);   // default is 100 ms
         telemetry = new MultipleTelemetry(telemetry, dashboard.getTelemetry());
 
-        // Read all motor/encoder values from each hub in one go per loop (much faster loops)
-        List<LynxModule> hubs = hardwareMap.getAll(LynxModule.class);
-        for (LynxModule hub : hubs) {
-            hub.setBulkCachingMode(LynxModule.BulkCachingMode.AUTO);
-        }
-
-        FieldCentricDrive drive = new FieldCentricDrive(hardwareMap);
-        Shooter shooter         = new Shooter(hardwareMap);
-        Feeder feeder           = new Feeder(hardwareMap);
-        SideServos sideServos   = new SideServos(hardwareMap);
-        VoltageMonitor battery  = new VoltageMonitor(hardwareMap);
-        ThriftyCamera camera    = new ThriftyCamera(hardwareMap);
-        Localizer localizer     = new Localizer(camera);
-        AutoAim aim             = new AutoAim(localizer);
-
-        // Same motor objects the subsystems use, only for reading current draw
-        DcMotorEx[] currentMotors = new DcMotorEx[CURRENT_MOTORS.length];
-        for (int i = 0; i < CURRENT_MOTORS.length; i++) {
-            currentMotors[i] = hardwareMap.get(DcMotorEx.class, CURRENT_MOTORS[i]);
-        }
-        double[] motorAmps = new double[currentMotors.length];
-        double[] hubAmps = new double[hubs.size()];
-        int nextCurrentRead = 0;
-
-
-        DataLogger log = LOG_TO_FILE ? new DataLogger("teleop",
-                "targetRPM", "rawRPM", "filteredRPM", "shooterPower", "loadComp", "shotsFired",
-                "readyToFeed", "volleyActive", "beamBroken", "magazineFull", "jamEjecting", "intakeVelocity",
-                "sideServoDeg", "servoPowered", "batteryVoltage",
-                "tagCount", "goalSeen", "goalRangeCm", "visionGoalDistanceCm", "aiming", "aimErrorDeg", "loopMs") : null;
+        robot = new AutoActions(this);
 
         // Pick alliance (which goal to aim at) until START is pressed
         while (opModeInInit()) {
             if (gamepad1.x)      ThriftyCamera.ALLIANCE = ThriftyCamera.BLUE;
             else if (gamepad1.b) ThriftyCamera.ALLIANCE = ThriftyCamera.RED;
-
+            robot.camera.update();   // auto brightness tunes while waiting
 
             telemetry.addData("Status", "Initialized. Ready.");
-            telemetry.addData("Camera", camera.isConnected() ? "connected" : "NOT FOUND (check config name)");
+            telemetry.addData("Camera", robot.camera.isConnected() ? "connected" : "NOT FOUND (check config name)");
+            telemetry.addData("Brightness", robot.camera.getBrightnessStatus());
             telemetry.addData("Aiming at", ThriftyCamera.ALLIANCE + "   (X = blue, B = red)");
             telemetry.update();
         }
         if (isStopRequested()) return;
+        robot.camera.lockBrightness();
+        robot.markStart();
+        robot.setNormalSpeed(MOVEMENT_SPEED);
+        robot.alignToGoal(FIRST_AIM_TIME);
+        robot.shoot(SHOOT_TIMEOUT);
+        robot.move(LEFT, 0.5, INTAKE_OFF);
+        robot.move(BACKWARD, 0.85, INTAKE_OFF);
+        robot.move(LEFT, 2.05, INTAKE_OFF);
 
-        sideServos.goToB();   // servos don't move until first commanded
-
-        ElapsedTime loopTimer = new ElapsedTime();
-        boolean lastA = false, lastB = false;
-        boolean lastMagazineFull = false;
-        boolean lastAligning = false;
-
-        while (opModeIsActive()) {
-
-            ElapsedTime autoTimer = new ElapsedTime();
-            double autoTimerAdjust = autoTimer.seconds() + REST_TO_SHOOT_X;
-
-            //drive forwards
-            while (autoTimer.seconds() <= autoTimerAdjust) {
-            drive.drive(0,MOVEMENT_SPEED,0);
-            }
-            drive.drive(0,0,0);
-
-            autoTimerAdjust = autoTimer.seconds() + PAUSE; //to account for errors
-            while (autoTimer.seconds() <= autoTimerAdjust) {
-            }
-
-            //Strafe left
-            autoTimerAdjust = autoTimer.seconds() + REST_TO_SHOOT_Y; //to account for errors
-            while (autoTimer.seconds() <= autoTimerAdjust) {
-                drive.drive(-MOVEMENT_SPEED,0,0);
-            }
-            drive.drive(0,0,0);
-
-
-            //autoAim
-            autoTimerAdjust = autoTimer.seconds() + CAMERA_AIM;
-            while (autoTimer.seconds() <= autoTimerAdjust) {
-                camera.update();
-
-                aim.update(true, drive.updateHeading(), feeder.isVolleyActive());
-
-                drive.drive(gamepad1.left_stick_x, -gamepad1.left_stick_y, aim.getTurn());
-            }
-
-            //Shoot
-            autoTimerAdjust = autoTimer.seconds() + SHOOT_TIMEOUT; //to account for errors
-            while (shooter.getShotsFired() < 4 && autoTimer.seconds() <= autoTimerAdjust) {
-                shooter.spinUp();
-                shooter.setFeeding(feeder.isVolleyActive());
-                shooter.update(battery.update());
-                feeder.update(
-                        true, // Currently shooting Variable
-                        shooter.isReadyToFeed() && aim.isReadyToShoot(), // Shooter revved up and aim settled (always true when not auto-aiming).
-                        false, // Eject Keybind
-                        false, // Manual Intake Keybind
-                        false); // Run intake and index backwards.
-            }
-            // Drive forwards
-
-            sideServos.goToA();
-
-            autoTimerAdjust = autoTimer.seconds() + SHOOT_TO_FORWARD;
-            while (autoTimer.seconds() <= autoTimerAdjust) {
-                drive.drive(0,-MOVEMENT_SPEED,0);
-            }
-
-        drive.stop();
-        shooter.stop();
-        shooter.update(battery.get());
-        feeder.stop();
-        camera.close();
-        if (log != null) log.close();
-        break;
+        robot.stopAll();
     }
-}}
+}

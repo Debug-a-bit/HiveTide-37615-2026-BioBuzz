@@ -33,7 +33,7 @@ public class Shooter {
     public static final double TICKS_PER_REV = 28;
 
     // ---- Controller (live-tunable in FTC Dashboard) ----
-    private final static double kS = 0.7440;      // volts needed just to start turning
+    public static double kS = 0.7440;      // volts needed just to start turning
     public static double kV = 0.002092;   // volts per RPM, measured automatically
     public static double kP = 0.05;       // volts per RPM of error
 
@@ -46,10 +46,10 @@ public class Shooter {
 
     // ---- Ball load compensation (only while feeding) ----
     public static int    BALLS_PER_VOLLEY = 4;
-    public static double LOAD_VOLTS       = 0.39;   // extra volts to carry the balls' drag
+    public static double LOAD_VOLTS       = 1.36;   // extra volts to carry the balls' drag
     public static double kP_FEEDING       = 0.06;  // stiffer speed correction while balls go through
-    public static double SHOT_DROP_RPM    = 25;   // a dip this far below target = a ball is in the wheel
-    public static double SHOT_RECOVER_RPM = 10;    // back within this of target = that ball has left
+    public static double SHOT_DROP_RPM    = 37;   // a dip this far below target = a ball is in the wheel
+    public static double SHOT_RECOVER_RPM = 43;    // back within this of target = that ball has left
 
     private enum Mode { OFF, VELOCITY, OPEN_LOOP }
 
@@ -156,6 +156,12 @@ public class Shooter {
     }
 
     public int getShotsFired() { return shotsFired; }
+
+    /** Starts the shot count from zero, for checking it before the next volley begins. */
+    public void resetShotCount() {
+        shotsFired = 0;
+        inShotDip = false;
+    }
 
     /** Latches "at speed" once target is reached; drops it only on a real speed drop. */
     private void updateReady() {

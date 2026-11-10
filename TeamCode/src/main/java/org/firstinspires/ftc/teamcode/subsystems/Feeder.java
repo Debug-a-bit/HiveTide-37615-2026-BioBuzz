@@ -91,9 +91,10 @@ public class Feeder {
      * @param reject         driver wants to spit balls out of the intake
      * @param manualFeed     manual: run intake + indexer toward the shooter
      * @param manualReverse  manual: run intake + indexer backwards
+     * @param magOverride    treat the magazine as full this loop (e.g. preloaded in auto, before feeding)
      */
     public void update(boolean shooting, boolean shooterReady, boolean reject,
-                       boolean manualFeed, boolean manualReverse) {
+                       boolean manualFeed, boolean manualReverse, boolean magOverride) {
         beamBroken = !beamBreak.getState();   // sensor reads false when the beam is blocked
         manual = manualFeed || manualReverse;
 
@@ -102,7 +103,7 @@ public class Feeder {
         volley = AUTO_FEED_ENABLED && shooting && (volley || shooterReady);
 
         // ---- Track the magazine (always, even in manual) ----
-        if (beamBroken && !shooting) {
+        if (beamBroken && !shooting || magOverride) {
             magazineFull = true;                                    // a ball has reached the top
         } else if (reject || volley || (shooting && manualFeed)) {
             magazineFull = false;                                   // balls are leaving
@@ -168,5 +169,6 @@ public class Feeder {
     public void stop() {
         intake.setPower(0);
         indexer.setPower(0);
+        lastIntakePower = 0;   // so sitting stopped doesn't look like a jam on the next update
     }
 }

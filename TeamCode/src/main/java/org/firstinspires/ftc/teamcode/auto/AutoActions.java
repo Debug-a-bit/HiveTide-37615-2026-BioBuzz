@@ -1,5 +1,6 @@
 package org.firstinspires.ftc.teamcode.auto;
 
+import com.acmerobotics.dashboard.config.Config;
 import com.qualcomm.hardware.lynx.LynxModule;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.util.ElapsedTime;
@@ -27,8 +28,17 @@ import org.firstinspires.ftc.teamcode.util.VoltageMonitor;
  *
  * Every loop is written to /sdcard/FIRST/logs/auto_<date>_<time>.csv (pull with: adb pull /sdcard/FIRST/logs).
  * The "step" column counts actions in the order they ran (1 = first move/turn/aim/shoot).
+ *
+ * Timed moves scale their power by NOMINAL_VOLTS / battery voltage, so a move covers the same distance
+ * on a full or a tired battery.
  */
+@Config
 public class AutoActions {
+
+    /** False = timed moves use their power as given, whatever the battery voltage. */
+    public static boolean VOLTAGE_COMPENSATION = true;
+    /** Battery voltage (under load, as "batteryVoltage" shows) the move distances were tuned at. */
+    public static double NOMINAL_VOLTS = 12.5;
 
     /** Field directions, relative to how the robot sat at markStart(). */
     public enum Direction {
@@ -105,7 +115,7 @@ public class AutoActions {
     public static final boolean INTAKE_ON = true;
     public static final boolean INTAKE_OFF = false;
 
-    private double normalSpeed = 0.5;
+    private double normalSpeed = 0.6;
 
     /** The speed move() uses when none is given. Distances are measured as seconds at this speed. */
     public void setNormalSpeed(double speed) {
@@ -168,12 +178,20 @@ public class AutoActions {
         ElapsedTime timer = new ElapsedTime();
         while (opMode.opModeIsActive() && timer.seconds() <= seconds) {
             drive.updateHeading();
-            drive.drive(x, y, rx);
+            double scale = voltageScale();
+            drive.drive(x * scale, y * scale, rx * scale);
             updateIntake(intake);
             updateShooter(feeder.isMagazineFull());
             logLoop();
         }
         drive.drive(0, 0, 0);
+    }
+
+    /** Power multiplier that makes the drive behave as it would at NOMINAL_VOLTS. */
+    private double voltageScale() {
+        double volts = battery.update();
+        if (!VOLTAGE_COMPENSATION || volts <= 0) return 1.0;
+        return NOMINAL_VOLTS / volts;
     }
 
     /**

@@ -83,7 +83,7 @@ public class ThriftyCamera {
 
     // ---- Auto brightness: tunes exposure (then gain) toward TARGET_BRIGHTNESS ----
     /** False = always use the fixed EXPOSURE_MS and GAIN above. */
-    public static boolean AUTO_BRIGHTNESS = true;
+    public static boolean AUTO_BRIGHTNESS = false;
     /** False = tune only until lockBrightness() (called at START), then hold. True = keep adjusting all match. */
     public static boolean AUTO_BRIGHTNESS_IN_MATCH = false;
     /** Average image brightness to aim for (0 = black, 255 = white). */

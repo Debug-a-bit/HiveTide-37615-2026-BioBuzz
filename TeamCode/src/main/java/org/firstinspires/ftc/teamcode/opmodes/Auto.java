@@ -74,7 +74,7 @@ public class Auto extends LinearOpMode {
     /** Time spent turning toward the goal before the first volley (starts roughly lined up). */
     public static double FIRST_AIM_TIME = 1.0;
     /** Time spent turning toward the goal before the second volley. */
-    public static double SECOND_AIM_TIME = 3.0;
+    public static double SECOND_AIM_TIME = 1.5;
     /** Longest a volley may take (includes spinning up the flywheel). */
     public static double SHOOT_TIMEOUT = 3.0;
     /** Longest a turn may take if it can't get within FieldCentricDrive.ALIGN_TOLERANCE_DEG. */
@@ -114,18 +114,41 @@ public class Auto extends LinearOpMode {
             telemetry.addData("Camera", robot.camera.isConnected() ? "connected" : "NOT FOUND (check config name)");
             telemetry.addData("Brightness", robot.camera.getBrightnessStatus());
             telemetry.addData("Aiming at", ThriftyCamera.ALLIANCE + "   (X = blue, B = red)");
+            telemetry.addData("Tags seen", robot.camera.getTagIds());
             telemetry.update();
         }
         if (isStopRequested()) return;
         robot.camera.lockBrightness();
-        robot.markStart();
-        robot.setNormalSpeed(MOVEMENT_SPEED);
-        robot.alignToGoal(FIRST_AIM_TIME);
-        robot.shoot(SHOOT_TIMEOUT);
-        robot.move(LEFT, 0.5, INTAKE_OFF);
-        robot.move(BACKWARD, 0.85, INTAKE_OFF);
-        robot.move(LEFT, 2.05, INTAKE_OFF);
 
+        robot.markStart();   // move directions and turns are relative to how the robot starts
+        robot.servoUp();
+        robot.shoot(SHOOT_TIMEOUT);
+        robot.pause(1, INTAKE_OFF);
+        robot.move(LEFT, 0.2, INTAKE_OFF);
+        robot.turnTo(-90, 1.5, INTAKE_OFF);
+        robot.move(RIGHT, 0.4, INTAKE_OFF);
+        robot.move(BACKWARD, 0.75, INTAKE_OFF);
+        robot.move(BACKWARD, 0.85, INTAKE_ON, 0.3);
+        robot.pause(1, INTAKE_ON);
+        robot.move(FORWARD, 0.6, INTAKE_OFF);
+        robot.pause(1, INTAKE_OFF);
+        robot.move(LEFT, 3.05, INTAKE_OFF);
+        robot.turnTo(-90, 1.8, INTAKE_OFF);
+        robot.pause(0.5, INTAKE_OFF);
+        robot.move(FORWARD, 0.5, INTAKE_OFF);
+        robot.turnTo(180, 1.5, INTAKE_OFF);
+        robot.move(LEFT, 1.5, INTAKE_OFF);
+        robot.shoot(3.45);
+        robot.pause(0.5, INTAKE_OFF);
+        robot.move(RIGHT, 0.5, INTAKE_OFF, 0.5);
+        robot.move(BACKWARD, 0.8, INTAKE_OFF);
+        robot.servoDown();
+        robot.turnTo(180, 1.5, INTAKE_ON);
+        robot.move(LEFT, 1.4, INTAKE_ON);   // Intake from Flower
+        robot.pause(3, INTAKE_ON);
+        robot.move(RIGHT, 0.6, INTAKE_OFF);
+        robot.servoUp();
+        robot.move(BACKWARD, 1.5, INTAKE_OFF);
         robot.stopAll();
     }
 }

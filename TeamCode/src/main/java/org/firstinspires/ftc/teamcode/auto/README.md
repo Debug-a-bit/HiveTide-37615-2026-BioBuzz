@@ -1,6 +1,6 @@
 # How to make an auto
 
-Copy `opmodes/AutoFromRest.java`, rename it, and change the steps after `robot.setNormalSpeed(...)`.
+Copy `opmodes/Auto.java`, rename it, and change the steps after `robot.servoUp()`.
 The last line should always be `robot.stopAll()`.
 
 Directions: `FORWARD`, `BACKWARD`, `LEFT`, `RIGHT`
@@ -42,8 +42,8 @@ Shoot all the balls. Gives up after 3 seconds.
 `robot.stopIntake();`
 Turn the intake off.
 
-`robot.sideServos.goToA();` / `robot.sideServos.goToB();`
-Move the side servos.
+`robot.servoUp();` / `robot.servoDown();`
+Move the side servos up or down. The robot carries straight on while they move.
 
 `robot.stopAll();`
 Stop everything. Always the last line.

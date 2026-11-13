@@ -18,7 +18,7 @@ public class AutoAim {
 
     public static boolean ENABLED = true;
 
-    public static double kP            = 0.04;   // turn power per degree of error
+    public static double kP            = 0.06   ;   // turn power per degree of error
     public static double MIN_TURN      = 0.06;   // smallest turn power that actually moves the robot
     public static double MAX_TURN      = 0.6;
     public static double TOLERANCE_DEG = 1.5;    // "aimed" when within this; stops turning

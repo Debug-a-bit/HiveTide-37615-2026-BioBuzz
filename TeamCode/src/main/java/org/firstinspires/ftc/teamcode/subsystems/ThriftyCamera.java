@@ -20,6 +20,7 @@ import org.firstinspires.ftc.vision.VisionPortal;
 import org.firstinspires.ftc.vision.VisionProcessor;
 import org.firstinspires.ftc.vision.apriltag.AprilTagClusterDetection;
 import org.firstinspires.ftc.vision.apriltag.AprilTagDetection;
+import org.firstinspires.ftc.vision.apriltag.AprilTagSingleDetection;
 import org.firstinspires.ftc.vision.apriltag.AprilTagGameDatabase;
 import org.firstinspires.ftc.vision.apriltag.AprilTagProcessor;
 import org.opencv.calib3d.Calib3d;
@@ -313,6 +314,25 @@ public class ThriftyCamera {
     public boolean isConnected()     { return portal != null && portal.getCameraState() != VisionPortal.CameraState.ERROR; }
     public boolean hasTarget()       { return target != null; }
     public int getTagCount()         { return detections.size(); }
+    /**
+     * Everything in the latest frame: clusters by name with how much of the cluster was found
+     * (e.g. "BLUE SCORING 75%"), single tags by ID, or "none".
+     */
+    public String getTagIds() {
+        StringBuilder ids = new StringBuilder();
+        for (AprilTagDetection detection : detections) {
+            if (ids.length() > 0) ids.append(", ");
+            if (detection instanceof AprilTagClusterDetection) {
+                AprilTagClusterDetection cluster = (AprilTagClusterDetection) detection;
+                ids.append(cluster.metadata != null ? cluster.metadata.name : "cluster")
+                   .append(' ').append(cluster.percentClusterFound).append('%');
+                if (cluster.ftcPose == null) ids.append(" (no pose)");
+            } else if (detection instanceof AprilTagSingleDetection) {
+                ids.append(((AprilTagSingleDetection) detection).id);
+            }
+        }
+        return ids.length() > 0 ? ids.toString() : "none";
+    }
     /** True only on the loop a new camera frame containing the goal arrived. */
     public boolean isNewTarget()     { return newTarget; }
     /** System.nanoTime() when the frame with the goal was captured. */

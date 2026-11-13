@@ -166,6 +166,11 @@ public class Feeder {
     public boolean isJamEjecting()  { return jamEjecting; }
     public double getIntakeVelocity() { return intakeVelocity; }
 
+    /** Forget that the magazine is full; the beam break sets it again on the next update if a ball is still there. */
+    public void clearMagazine() {
+        magazineFull = false;
+    }
+
     public void stop() {
         intake.setPower(0);
         indexer.setPower(0);

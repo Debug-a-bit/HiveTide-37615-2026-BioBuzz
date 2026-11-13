@@ -40,7 +40,8 @@ import java.util.List;
  *   A               side servos to angle A
  *   B               side servos to angle B
  *
- * The controller rumbles when the magazine becomes full.
+ * The controller rumbles when the magazine becomes full, and the shooter spins up then so a shot
+ * doesn't have to wait for it (it coasts again once the volley empties the magazine).
  *
  * Every loop is also written to /sdcard/FIRST/logs/teleop_<date>_<time>.csv
  * (pull with: adb pull /sdcard/FIRST/logs).
@@ -54,7 +55,7 @@ public class BasicTeleOp extends LinearOpMode {
     /** How long (ms) the controller rumbles when the magazine fills. 0 = off. */
     public static int FULL_RUMBLE_MS = 400;
     /** Save every loop to a CSV on the Control Hub. */
-    public static boolean LOG_TO_FILE = false;
+    public static boolean LOG_TO_FILE = true;
     /** Heading D-pad up turns to (degrees, + = counter-clockwise; 0 = the way the robot faced at heading reset). */
     public static double HIVE_TILT_HEADING_DEG = 0;
     /**
@@ -113,6 +114,7 @@ public class BasicTeleOp extends LinearOpMode {
             telemetry.addData("Camera", camera.isConnected() ? "connected" : "NOT FOUND (check config name)");
             telemetry.addData("Brightness", camera.getBrightnessStatus());
             telemetry.addData("Aiming at", ThriftyCamera.ALLIANCE + "   (X = blue, B = red)");
+            telemetry.addData("Tags seen", camera.getTagIds());
             telemetry.update();
         }
         if (isStopRequested()) return;
@@ -161,6 +163,7 @@ public class BasicTeleOp extends LinearOpMode {
             // ================= SHOOTER =================
             if (shooting)                   shooter.spinUp();
             else if (feeder.isBackingOff()) shooter.setOpenLoopPower(Feeder.SHOOTER_BACKOFF_POWER);  // help push a ball back off the beam
+            else if (feeder.isMagazineFull()) shooter.spinUp();   // get to speed before the shot (magazine state is from last loop)
             else                            shooter.stop();
             // Push harder while balls are going through (feeder state is from last loop, ~1 loop behind)
             shooter.setFeeding(firing);
@@ -208,6 +211,8 @@ public class BasicTeleOp extends LinearOpMode {
             telemetry.addData("cameraFps", camera.getFps());
             telemetry.addData("cameraBrightness", camera.getBrightness());
             telemetry.addData("tagCount", camera.getTagCount());
+            telemetry.addData("tagIds", camera.getTagIds());
+            telemetry.addData("alliance", ThriftyCamera.ALLIANCE);
             telemetry.addData("goalSeen", camera.hasTarget() ? 1 : 0);
             telemetry.addData("goalRange (cm)", camera.getTargetRange());
             telemetry.addData("tagHeight (cm)", camera.getTagHeight());

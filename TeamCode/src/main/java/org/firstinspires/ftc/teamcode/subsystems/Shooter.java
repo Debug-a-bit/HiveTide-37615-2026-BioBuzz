@@ -37,7 +37,7 @@ public class Shooter {
     public static double kV = 0.002092;   // volts per RPM, measured automatically
     public static double kP = 0.05;       // volts per RPM of error
 
-    public static double TARGET_RPM = 3050;
+    public static double TARGET_RPM = 2950;
     public static double FILTER_SEC = 0.005;   // speed smoothing; lower = less delay
 
     // ---- "Ready to feed" check ----
@@ -46,10 +46,10 @@ public class Shooter {
 
     // ---- Ball load compensation (only while feeding) ----
     public static int    BALLS_PER_VOLLEY = 4;
-    public static double LOAD_VOLTS       = 1.36;   // extra volts to carry the balls' drag
-    public static double kP_FEEDING       = 0.06;  // stiffer speed correction while balls go through
-    public static double SHOT_DROP_RPM    = 37;   // a dip this far below target = a ball is in the wheel
-    public static double SHOT_RECOVER_RPM = 43;    // back within this of target = that ball has left
+    public static double LOAD_VOLTS       = 0.05;   // extra volts to carry the balls' drag
+    public static double kP_FEEDING       = 0.04;  // stiffer speed correction while balls go through
+    public static double SHOT_DROP_RPM    = 25;   // a dip this far below target = a ball is in the wheel
+    public static double SHOT_RECOVER_RPM = 10;    // back within this of target = that ball has left
 
     private enum Mode { OFF, VELOCITY, OPEN_LOOP }
 

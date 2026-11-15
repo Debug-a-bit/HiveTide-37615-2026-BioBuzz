@@ -145,6 +145,9 @@ public class BasicTeleOp extends LinearOpMode {
             boolean firing = feeder.isVolleyActive() || (shooting && gamepad1.right_trigger_pressed);
             aim.update(autoAimShot, heading, firing);
 
+            if (gamepad1.y)      ThriftyCamera.ALLIANCE = ThriftyCamera.BLUE;
+            else if (gamepad1.x) ThriftyCamera.ALLIANCE = ThriftyCamera.RED;
+
             // ================= DRIVE =================
             // Auto-aim at the goal wins; otherwise D-pad up turns to HIVE_TILT_HEADING_DEG; otherwise the stick
             boolean aligning = gamepad1.dpad_up && !aim.isAiming();

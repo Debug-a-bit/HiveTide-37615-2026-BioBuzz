@@ -61,7 +61,7 @@ public class ThriftyCamera {
     public static String CAMERA_NAME = "Webcam 1";
     public static int RESOLUTION_WIDTH  = 640;
     public static int RESOLUTION_HEIGHT = 480;
-    public static double DASHBOARD_FPS  = 1;   // 0 = don't stream to Dashboard (saves Wi-Fi)
+    public static double DASHBOARD_FPS  = 0;   // 0 = don't stream to Dashboard (saves Wi-Fi)
     /**
      * True = camera is mounted upside down (image rotated 180°): flips the sign of bearing, yaw and the
      * fallback left/right. The floor position (used for aiming) works out which way is up from the tags.
@@ -83,11 +83,11 @@ public class ThriftyCamera {
 
     // ---- Auto brightness: tunes exposure (then gain) toward TARGET_BRIGHTNESS ----
     /** False = always use the fixed EXPOSURE_MS and GAIN above. */
-    public static boolean AUTO_BRIGHTNESS = false;
+    public static boolean AUTO_BRIGHTNESS = true;
     /** False = tune only until lockBrightness() (called at START), then hold. True = keep adjusting all match. */
-    public static boolean AUTO_BRIGHTNESS_IN_MATCH = false;
+    public static boolean AUTO_BRIGHTNESS_IN_MATCH = true;
     /** Average image brightness to aim for (0 = black, 255 = white). */
-    public static double TARGET_BRIGHTNESS = 110;
+    public static double TARGET_BRIGHTNESS = 170;
     /** Close enough to the target to leave the settings alone. */
     public static double BRIGHTNESS_TOLERANCE = 10;
     /** Longest exposure auto brightness may use (longer = more motion blur); gain goes up after this. */
